@@ -88,6 +88,11 @@ def _already_a_bunker(port: int) -> bool:
         return False
 
 
+def in_container() -> bool:
+    """Whether this process runs in a Docker or Podman container."""
+    return Path("/.dockerenv").exists() or Path("/run/.containerenv").exists()
+
+
 def _port(cfg: Config) -> Check:
     bind, port = cfg.serve.bind, cfg.serve.port
     family = socket.AF_INET6 if ":" in bind else socket.AF_INET
@@ -102,7 +107,13 @@ def _port(cfg: Config) -> Check:
                 return Check("port", True, f"{where} is in use: a Bunker is already serving there")
             return Check("port", False, f"{where} is in use by something that is not a Bunker")
         return Check("port", False, f"{where} cannot be bound: {exc.strerror or exc}")
-    return Check("port", True, f"{where} binds")
+    note = ""
+    if bind in ("0.0.0.0", "::") and not in_container():
+        note = (
+            "; note: that is every interface of this host, including any the internet "
+            "reaches. Outside a container, set [serve] bind to this host's LAN address"
+        )
+    return Check("port", True, f"{where} binds{note}")
 
 
 def doctor(cfg: Config) -> DoctorReport:

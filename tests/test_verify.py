@@ -66,3 +66,19 @@ def test_verify_rewrites_the_status_page(scene: Scene) -> None:
     verify.verify(scene.cfg(), now=scene.clock)
     assert (scene.root / "status.html").exists()
     assert index.load(scene.root).artifacts
+
+
+def test_a_run_after_verify_refetches_what_verify_found(scene: Scene) -> None:
+    """A corruption `bunker verify` found is not undone by a run whose verify
+    cadence is not due: the entry's status says the bytes are bad."""
+    scene.extra = '[verify]\ndefault = "monthly"\n'
+    scene.run()
+    path = scene.file("osm-regions", REGION)
+    path.write_bytes(b"x" + path.read_bytes()[1:])
+    assert verify.verify(scene.cfg(), now=scene.clock).exit_code == 1
+    scene.clock.advance(hours=2)
+    report = scene.run()
+    outcome = next(o for o in report.outcomes if o.name == REGION)
+    assert outcome.corrupted and outcome.action == "fetched"
+    assert path.read_bytes() == scene.data["region"]
+    assert scene.entry("osm-regions", REGION).status == "current"

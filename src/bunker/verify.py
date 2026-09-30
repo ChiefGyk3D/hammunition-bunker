@@ -20,7 +20,7 @@ from bunker import statuspage
 from bunker.config import Config
 from bunker.index import load as load_index
 from bunker.index import save as save_index
-from bunker.run import iso
+from bunker.run import iso, sweep_incoming
 from bunker.volume import RunLock, hash_file, read_sidecar
 
 __all__ = ["Result", "VerifyReport", "verify"]
@@ -69,6 +69,7 @@ def verify(
     root = cfg.storage.root
     root.mkdir(parents=True, exist_ok=True)
     with RunLock(root):
+        sweep_incoming(root)
         idx = load_index(root)
         report = VerifyReport(started=iso(clock()))
         for entry in idx.artifacts:

@@ -166,6 +166,7 @@ def _parse(text: str) -> Listing:
     artifacts: list[Artifact] = []
     deferred: list[Deferred] = []
     licences: dict[str, str] = {}
+    seen: dict[tuple[str, str], Artifact] = {}
     for index, raw in enumerate(items):
         item = _entry(raw, index)
         unit, name = item["unit"], item["name"]
@@ -185,18 +186,33 @@ def _parse(text: str) -> Listing:
                 )
             )
             continue
-        artifacts.append(
-            Artifact(
-                unit=unit,
-                name=name,
-                url=item["url"],
-                check=item["check"],
-                digest=item["digest"],
-                checksum_url=item["checksum_url"],
-                size=item["size"],
-                licence=" ".join(item["licence"].split()),
-            )
+        artifact = Artifact(
+            unit=unit,
+            name=name,
+            url=item["url"],
+            check=item["check"],
+            digest=item["digest"],
+            checksum_url=item["checksum_url"],
+            size=item["size"],
+            licence=" ".join(item["licence"].split()),
         )
+        first = seen.get((unit, name))
+        if first is not None:
+            # A region typed twice lists twice; two workers on one name
+            # would race for one path. The same artifact again is dropped;
+            # a different one under the same name is deferred, by name.
+            if first != artifact:
+                deferred.append(
+                    Deferred(
+                        unit,
+                        name,
+                        f"listed twice with different contents ({first.url} and "
+                        f"{artifact.url}); a mirror serves one file per name",
+                    )
+                )
+            continue
+        seen[(unit, name)] = artifact
+        artifacts.append(artifact)
     return Listing(
         engine_version=str(doc.get("engine", "")),
         artifacts=tuple(artifacts),

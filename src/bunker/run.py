@@ -141,6 +141,9 @@ class RunReport:
     deferred: list[dict[str, str | None]] = field(default_factory=list)
     dropped: list[dict[str, str | None]] = field(default_factory=list)
     error: str | None = None
+    plain_http: list[str] = field(default_factory=list)
+    """``unit/name`` of every artifact whose publisher URL is plain HTTP. The
+    digest, not the transport, is the check; the spec asks that it be said."""
 
     def counts(self) -> dict[str, int]:
         count = dict.fromkeys(("fetched", "verified", "unchanged", "stale", "failed"), 0)
@@ -169,6 +172,12 @@ class RunReport:
                 lines.append(f"  corrupted: {o.unit}/{o.name} (its bytes no longer matched)")
             if o.action in ("failed", "stale"):
                 lines.append(f"  {o.action}: {o.unit}/{o.name}: {o.reason}")
+        if self.plain_http:
+            lines.append(
+                f"  {len(self.plain_http)} publisher URL(s) are plain HTTP, as the catalog "
+                f"names them (the digest is the check, not the transport): "
+                + ", ".join(self.plain_http)
+            )
         for d in self.dropped:
             lines.append(
                 f"  dropped from the index: {d['unit']}/{d['name']} (no longer listed; "
@@ -186,6 +195,7 @@ class RunReport:
             "outcomes": [asdict(o) for o in self.outcomes],
             "deferred": self.deferred,
             "dropped": self.dropped,
+            "plain_http": self.plain_http,
             "exit_code": self.exit_code,
         }
 
@@ -361,6 +371,22 @@ class _Pass:
         return True, True
 
     def one(self, artifact: Artifact) -> Outcome:
+        """:meth:`_one`, with any failure it did not expect reported against
+        this artifact alone: a truncated body (an ``http.client`` exception,
+        not an OSError), an unreadable or failing disk. One artifact never
+        takes the run's report with it."""
+        try:
+            return self._one(artifact)
+        except Exception as exc:
+            reason = f"{type(exc).__name__}: {exc}".strip()
+            with self.lock:
+                found = self.idx.find(artifact.unit, artifact.name)
+                if found is not None:
+                    found.status, found.reason = "failed", reason
+                    self.save()
+            return Outcome(artifact.unit, artifact.name, "failed", "failed", reason)
+
+    def _one(self, artifact: Artifact) -> Outcome:
         try:
             folder = artifact_dir(self.root, artifact.unit, artifact.name)
         except UnsafeName as exc:
@@ -374,7 +400,12 @@ class _Pass:
             if matches:
                 cadence = self.cfg.schedule.verify_cadence(artifact.unit)
                 size = held.stat().st_size
-                if not hashed and verify_due(cadence, size, _parse(entry.verified), self.now):
+                # A copy `bunker verify` found corrupted is hashed now, whatever
+                # the cadence: the sidecar it matched on is what went wrong.
+                suspect = entry.status == "corrupted"
+                if not hashed and (
+                    suspect or verify_due(cadence, size, _parse(entry.verified), self.now)
+                ):
                     sha256, _ = hash_file(held)
                     hashed = True
                     if sha256 != read_sidecar(held):
@@ -473,6 +504,25 @@ class _Pass:
         )
 
 
+def sweep_incoming(root: Path) -> list[Path]:
+    """Remove the partial downloads a killed run left in ``.incoming``.
+
+    Called with the volume's lock held, so no other writer exists. Only the
+    engine's temporaries (``*.part.<pid>``) go: in a container the Bunker is
+    PID 1 on every start, so a stranded ``.part.1`` would collide with the
+    next attempt's, which the engine refuses rather than follows. Verified
+    cache entries (content-addressed) stay and are re-verified on use."""
+    removed: list[Path] = []
+    incoming = root / ".incoming"
+    if not incoming.is_dir():
+        return removed
+    for path in incoming.rglob("*.part.*"):
+        if path.is_file() or path.is_symlink():
+            path.unlink(missing_ok=True)
+            removed.append(path)
+    return removed
+
+
 def _deferred(listing: Listing) -> list[dict[str, str | None]]:
     return [{"unit": d.unit, "name": d.name, "reason": d.reason} for d in listing.deferred]
 
@@ -513,6 +563,7 @@ def _finish(cfg: Config, idx: Index, report: RunReport, clock: Clock) -> RunRepo
         "corrupted": counts["corrupted"],
         "stale": counts["stale"],
         "error": report.error,
+        "plain_http": report.plain_http,
     }
     save_index(root, idx, generated=report.finished)
     statuspage.write(root, idx)
@@ -541,6 +592,7 @@ def run(
     root = cfg.storage.root
     root.mkdir(parents=True, exist_ok=True)
     with RunLock(root):
+        sweep_incoming(root)
         idx = load_index(root)
         start = clock()
         report = RunReport(started=iso(start))
@@ -563,6 +615,7 @@ def run(
 
         state = _Pass(cfg, idx, start, all_=all_, named=units, transport=_transport(cfg, transport))
         work = _order(got, units)
+        report.plain_http = [f"{a.unit}/{a.name}" for a in work if a.url.startswith("http://")]
         with ThreadPoolExecutor(max_workers=cfg.storage.downloads) as pool:
             report.outcomes = list(pool.map(state.one, work))
         report.dropped = _drop(idx, got, units)

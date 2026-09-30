@@ -128,8 +128,11 @@ running after you log out.
 Without a container, on a host that already runs Hammunition from a
 checkout: `pip install` this repository into the engine's virtual
 environment, set `[engine] command` to that environment's `hammunition`
-(and `catalog` to the checkout's `catalog/` if it cannot find it), and run
-`bunker schedule --config ...` under a systemd user unit of your own.
+(and `catalog` to the checkout's `catalog/` if it cannot find it), **set
+`[serve] bind` to the host's LAN address** (the default, every interface, is
+right only inside a container, where the compose file or quadlet decides
+what the host publishes), and run `bunker schedule --config ...` under a
+systemd user unit of your own.
 
 ## 3. Check it
 

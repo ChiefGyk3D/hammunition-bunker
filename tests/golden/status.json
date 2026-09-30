@@ -12,7 +12,12 @@
     "failed": 1,
     "corrupted": 0,
     "stale": 0,
-    "error": null
+    "error": null,
+    "plain_http": [
+      "country-files/cty.dat",
+      "osm-regions/north-america/us/vermont",
+      "dem-copernicus/Copernicus_DSM_COG_10_N44_00_W073_00_DEM"
+    ]
   },
   "counts": {
     "current": 2,

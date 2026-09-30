@@ -195,3 +195,19 @@ def test_engine_version_parses(tmp_path: Path, fake_engine: FakeEngine) -> None:
 )
 def test_meets_floor(version: str, ok: bool) -> None:
     assert engine.meets_floor(version) is ok
+
+
+def test_a_name_listed_twice_with_different_bytes_is_deferred(
+    tmp_path: Path, fake_engine: FakeEngine
+) -> None:
+    fake_engine.set_doc(
+        artifacts_doc(
+            [
+                entry("u", "one", "https://p/a", "sha256", SHA, size=1),
+                entry("u", "one", "https://p/b", "sha256", "c" * 64, size=1),
+            ]
+        )
+    )
+    listing = engine.ask_engine(cfg(tmp_path))
+    assert [a.url for a in listing.artifacts] == ["https://p/a"]
+    assert "listed twice" in listing.deferred[0].reason

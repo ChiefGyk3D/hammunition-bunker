@@ -68,7 +68,7 @@ refused by name. Relative paths resolve against the file's own directory.
 | `schedule.units` | `{}` | a cadence per unit, overriding the default |
 | `verify.default` | `"auto"` | how often held files are re-hashed: `auto` (every run under 1 GiB, monthly above), `every-run`, `daily`, `weekly` or `monthly` |
 | `verify.units` | `{}` | a verify cadence per unit |
-| `serve.bind` | `"0.0.0.0"` | the address the server binds inside the container; the compose file decides the host side |
+| `serve.bind` | `"0.0.0.0"` | the address the server binds. Inside the container every interface is right: the compose file or quadlet decides the host side. **Outside a container set it to the host's LAN address**; `bunker doctor` says so when it is not |
 | `serve.port` | `8080` | the port; the image's healthcheck assumes 8080 |
 
 A cadence is measured from the artifact's last fetch, with an hour's slack
@@ -81,7 +81,7 @@ not refresh": a missing artifact is fetched on any run.
 |---|---|---|
 | not on disk | fetched | `current`, or `failed` |
 | on disk, matches what the engine lists | re-hashed when its verify cadence is due (`verified`), else `unchanged` | `current` |
-| on disk, bytes no longer match the sidecar | removed and fetched at once (reported as corrupted) | `current`, or `corrupted` if the fetch failed |
+| on disk, bytes no longer match the sidecar (found now, or by an earlier `bunker verify`) | removed and fetched at once (reported as corrupted) | `current`, or `corrupted` if the fetch failed |
 | on disk, the engine lists something newer, cadence due | fetched; the old copy becomes `.previous` | `current`, or `failed` with the old copy still served |
 | on disk, the engine lists something newer, cadence not due | nothing | `stale` |
 | in the index, no longer listed by the engine | dropped from the index (no longer served); files left for you to delete | — |
@@ -96,7 +96,15 @@ A listed size that disagrees with the file on disk is not a match.
 Downloads go through Hammunition's own `Fetcher`: `fetch` for a sha256,
 `fetch_md5` for a publisher MD5 with the listed size. A listed artifact with
 no digest, or an MD5 with no size, is failed by name and nothing is
-downloaded. An artifact whose unit or name could leave the volume (`..`, a
+downloaded. Any failure the run did not foresee (a truncated body, a disk
+error reading a held file) fails that artifact alone, with its type and
+message; the rest of the run and its report carry on. A publisher URL on
+plain HTTP is named in the report and on the status page. An artifact the
+engine lists twice is kept once; twice with different contents, the
+second is deferred.
+
+Each run and each `bunker verify` starts by removing the partial downloads
+(`*.part.*`) a killed run left in `.incoming`. An artifact whose unit or name could leave the volume (`..`, a
 leading `.`, an empty segment) is failed by name.
 
 ## The volume
@@ -113,8 +121,10 @@ leading `.`, an empty segment) is failed by name.
   <unit>/<name>/<old>.previous        the last good copy, and its .sha256
 ```
 
-One directory per artifact, so no two artifacts can collide and a file's
-dated or `-latest` name never enters the mirror contract. The sidecar is
+One directory per artifact, so a file's dated or `-latest` name never
+enters the mirror contract. The one layout clash possible is a name nested
+inside another's file (artifact `a` holding file `b`, and artifact `a/b`);
+the second to arrive fails by name and the first keeps serving. The sidecar is
 sha256 of the bytes whatever the publisher's check was.
 
 ## The index
@@ -129,7 +139,7 @@ sha256 of the bytes whatever the publisher's check was.
 | `engine.version` | the Hammunition version the last run asked |
 | `artifacts` | one entry per artifact held or attempted (below) |
 | `deferred` | `{unit, name, reason}` for what the engine could not list |
-| `last_run` | `started`, `finished`, `fetched`, `verified`, `failed`, `corrupted`, `stale`, `error` |
+| `last_run` | `started`, `finished`, `fetched`, `verified`, `failed`, `corrupted`, `stale`, `error`, `plain_http` (the `unit/name` of every artifact whose publisher URL is plain HTTP) |
 
 Each artifact:
 
@@ -181,7 +191,7 @@ or changing one bumps the major. `tests/golden/` holds an example of each.
 
 | Kind | From | Fields |
 |---|---|---|
-| `run` | `bunker run` | `started`, `finished`, `engine_version`, `counts` (fetched, verified, unchanged, stale, failed, corrupted, deferred), `error`, `outcomes` (`unit`, `name`, `action`, `status`, `reason`, `corrupted`, `size`), `deferred`, `dropped`, `exit_code` |
+| `run` | `bunker run` | `started`, `finished`, `engine_version`, `counts` (fetched, verified, unchanged, stale, failed, corrupted, deferred), `error`, `outcomes` (`unit`, `name`, `action`, `status`, `reason`, `corrupted`, `size`), `deferred`, `dropped`, `plain_http`, `exit_code` |
 | `status` | `bunker status` | `engine_version`, `generated`, `last_run`, `counts` (per status), `not_current` (`unit`, `name`, `status`, `reason`), `deferred` |
 | `verify` | `bunker verify` | `started`, `finished`, `checked`, `corrupted`, `results` (`unit`, `name`, `path`, `ok`, `reason`), `exit_code` |
 | `doctor` | `bunker doctor` | `ok`, `checks` (`name`, `ok`, `detail`) |

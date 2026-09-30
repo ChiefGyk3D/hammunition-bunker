@@ -89,3 +89,13 @@ def test_a_config_error_is_a_failed_check(tmp_path: Path) -> None:
     report = doctor.doctor_path(tmp_path / "missing.toml")
     assert not report.ok
     assert [c.name for c in report.checks] == ["config"]
+
+
+def test_a_wildcard_bind_outside_a_container_is_flagged(
+    tmp_path: Path, fake_engine: FakeEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(doctor, "in_container", lambda: False)
+    path = tmp_path / "bunker.toml"
+    path.write_text(config_text(str(tmp_path / "vol"), extra=f"[serve]\nport = {free_port()}\n"))
+    check = by_name(doctor.doctor(config.load(path)))["port"]
+    assert "every interface" in check.detail

@@ -84,6 +84,13 @@ def render(index: Index, *, disk_used: int) -> str:
         )
         if run.get("error"):
             out.append(f'<p class="bad">The run failed: {_e(run["error"])}</p>')
+        plain = run.get("plain_http") or []
+        if plain:
+            out.append(
+                f"<p>{len(plain)} publisher URL(s) are plain HTTP, as the catalog names "
+                f"them; the digest is the check, not the transport: "
+                f"{_e(', '.join(str(p) for p in plain))}</p>"
+            )
 
     per_unit: dict[str, dict[str, int]] = defaultdict(lambda: dict.fromkeys(STATUSES, 0))
     sizes: dict[str, int] = defaultdict(int)

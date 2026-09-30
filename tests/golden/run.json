@@ -46,5 +46,10 @@
   ],
   "deferred": [],
   "dropped": [],
+  "plain_http": [
+    "country-files/cty.dat",
+    "osm-regions/north-america/us/vermont",
+    "dem-copernicus/Copernicus_DSM_COG_10_N44_00_W073_00_DEM"
+  ],
   "exit_code": 0
 }
