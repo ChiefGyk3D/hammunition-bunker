@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 Renegade Penguin LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# CodeQL (Python and the workflows themselves), gitleaks and dependency
+# review. The jobs live in ChiefGyk3D/git-your-ship-together.
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/security.yml@34536f91c5207effb397d065e6bb98cc348c6e2b # v1.5.0
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+      id-token: write
+    secrets:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}   # optional Service Token fallback; unset means OIDC only
+    with:
+      codeql-queries: security-extended,security-and-quality
+      # The one dependency is the engine, pinned by git tag; pip-audit has no
+      # requirements file to read for it. The image's packages are Debian's,
+      # scanned by Trivy in release.yml.
+      pip-audit-requirements: ""
+      egress-policy: block
+      doppler-project: ci
+      doppler-config: ci
+      doppler-identity-id: ${{ vars.DOPPLER_IDENTITY_ID }}

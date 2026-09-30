@@ -1,0 +1,49 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 Renegade Penguin LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# ruff, ruff format, mypy --strict and pytest on 3.11 to 3.13. The jobs live
+# in ChiefGyk3D/git-your-ship-together; its `CI green` job is the one check
+# branch protection watches (`ci / CI green`).
+#
+# Until Hammunition v0.16.0 is tagged, the install step cannot resolve the
+# engine pin and this is red. That is the honest state: the Bunker needs the
+# engine's `artifacts` command and LAN mirror, which ship in that release.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/python-ci.yml@34536f91c5207effb397d065e6bb98cc348c6e2b # v1.5.0
+    permissions:
+      contents: read
+      id-token: write   # Doppler OIDC, when a Doppler identity is configured
+    secrets:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}   # optional Service Token fallback; unset means OIDC only
+    with:
+      python-versions: '["3.11", "3.12", "3.13"]'
+      install-command: |
+        python -m pip install --upgrade "pip>=25.3"
+        pip install -e ".[dev]"
+      test-command: pytest -W error::DeprecationWarning
+      lint-install-command: pip install -e ".[dev]"
+      lint-command: ruff check --output-format=github src tests packaging && ruff format --check src tests packaging && mypy
+      # The image refuses to build until ENGINE_SHA256 is filled at the first
+      # release; release.yml builds it on a tag.
+      docker-build: false
+      egress-policy: block
+      doppler-project: ci
+      doppler-config: ci
+      doppler-identity-id: ${{ vars.DOPPLER_IDENTITY_ID }}

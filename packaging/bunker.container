@@ -1,0 +1,43 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 Renegade Penguin LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Hammunition Bunker as a rootless Podman quadlet, for a Debian host.
+#
+#   mkdir -p ~/.config/containers/systemd ~/bunker/data ~/.config/bunker
+#   cp packaging/bunker.container ~/.config/containers/systemd/
+#   cp config.example.toml ~/.config/bunker/bunker.toml   # then edit it
+#   systemctl --user daemon-reload
+#   systemctl --user start bunker
+#   loginctl enable-linger "$USER"      # keep it running after you log out
+#
+# Rootless Podman, never the docker group: docker group membership is
+# root-equivalent access to the host, which is the trade the Hammunition
+# project declined. Edit PublishPort to this host's LAN address first;
+# 192.0.2.10 is a documentation address and fails to bind until you do.
+
+[Unit]
+Description=Hammunition Bunker, a verified LAN mirror of Hammunition's offline data
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+Image=ghcr.io/chiefgyk3d/hammunition-bunker:0.1.0
+ContainerName=hammunition-bunker
+PublishPort=192.0.2.10:8080:8080
+Volume=%h/bunker/data:/data:Z
+Volume=%h/.config/bunker/bunker.toml:/etc/bunker/bunker.toml:ro,Z
+# Your uid on the host is uid 10001 in the container, so the volume stays yours.
+UserNS=keep-id:uid=10001,gid=10001
+ReadOnly=true
+Tmpfs=/tmp
+DropCapability=ALL
+NoNewPrivileges=true
+HealthCmd=python3 -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/index.json', timeout=5)"
+HealthInterval=60s
+
+[Service]
+Restart=on-failure
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target

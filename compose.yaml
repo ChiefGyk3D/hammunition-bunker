@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 Renegade Penguin LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Hammunition Bunker for Synology Container Manager (or any Docker Compose).
+# Import this file as a project; docs/guide.md walks through it.
+#
+# Before the first start, edit two things:
+#   1. the address in `ports`: your NAS's LAN address. 192.0.2.10 is a
+#      documentation address and will fail to bind until you change it,
+#      which is deliberate. Never 0.0.0.0 on a NAS the internet can reach.
+#   2. the two host paths in `volumes`, if yours differ.
+
+services:
+  bunker:
+    # Pinned to a release. To update: change the tag, redeploy the project.
+    image: ghcr.io/chiefgyk3d/hammunition-bunker:0.1.0
+    container_name: hammunition-bunker
+    restart: unless-stopped
+    ports:
+      - "192.0.2.10:8080:8080"
+    volumes:
+      # The volume: every artifact, its sidecar, index.json, status.html.
+      - /volume1/bunker:/data
+      # Your selection. Read-only: the Bunker never writes its config.
+      - /volume1/docker/bunker/bunker.toml:/etc/bunker/bunker.toml:ro
+    # The image runs as uid/gid 10001. On a Synology share, either give that
+    # uid the folder (docs/guide.md) or run as your own user here:
+    # user: "1026:100"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/index.json', timeout=5)
+      interval: 60s
+      timeout: 10s
+      start_period: 30s
+      retries: 3

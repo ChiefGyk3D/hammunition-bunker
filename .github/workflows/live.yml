@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 Renegade Penguin LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# A real run against real publishers, weekly: two small public artifacts
+# (country-files and country-boundaries, about 14 MB between them) through
+# the real engine, so a publisher changing shape shows up here and not on
+# somebody's NAS. Schedule and manual only: it talks to the internet, so it
+# must never gate a pull request.
+name: Live
+
+on:
+  schedule:
+    - cron: '23 5 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: a real run against the publishers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ChiefGyk3D/Hammunition
+          ref: v0.16.0
+          path: engine
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - name: install the engine checkout and the Bunker
+        run: |
+          pip install --disable-pip-version-check ./engine
+          pip install --disable-pip-version-check --no-deps -e .
+      - name: two runs, a verify, and the answers checked
+        env:
+          HAMMUNITION_CATALOG: ${{ github.workspace }}/engine/catalog
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/live
+          printf '[selection]\nunits = ["country-files", "country-boundaries"]\n[storage]\nroot = "/tmp/live/data"\n' > /tmp/live/bunker.toml
+          bunker doctor --config /tmp/live/bunker.toml || true
+          bunker run --json --config /tmp/live/bunker.toml > /tmp/live/first.json
+          bunker run --json --config /tmp/live/bunker.toml > /tmp/live/second.json
+          bunker verify --json --config /tmp/live/bunker.toml > /tmp/live/verify.json
+          python - <<'PY'
+          import json
+          first = json.load(open("/tmp/live/first.json"))
+          second = json.load(open("/tmp/live/second.json"))
+          check = json.load(open("/tmp/live/verify.json"))
+          assert first["exit_code"] == 0, first
+          assert first["counts"]["fetched"] == 2, first["counts"]
+          assert second["counts"]["fetched"] == 0, second["counts"]
+          assert check["exit_code"] == 0 and check["checked"] == 2, check
+          print("live run ok:", first["counts"], second["counts"])
+          PY

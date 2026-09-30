@@ -1,0 +1,7 @@
+# Keeps the pinned action SHAs moving; each bump is read, not just merged.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

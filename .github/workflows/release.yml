@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 Renegade Penguin LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# On a version tag: build the image, test it, scan it with Trivy, then publish
+# linux/amd64 + linux/arm64 to GHCR, signed with cosign, with an SBOM and
+# build provenance. The jobs live in ChiefGyk3D/git-your-ship-together.
+#
+# Image: ghcr.io/chiefgyk3d/hammunition-bunker
+#
+# Tags only, not pull requests: the image refuses to build until the
+# Dockerfile's ENGINE_SHA256 is the real digest of the engine release, which
+# is filled in as part of cutting a release (CONTRIBUTING.md).
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  container:
+    uses: ChiefGyk3D/git-your-ship-together/.github/workflows/container-release.yml@34536f91c5207effb397d065e6bb98cc348c6e2b # v1.5.0
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      security-events: write
+    secrets:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}   # optional Service Token fallback; unset means OIDC only
+    with:
+      push: ${{ github.event_name == 'push' }}
+      docker-test-command: docker run --rm "$IMAGE" --version
+      egress-policy: audit
+      doppler-project: ci
+      doppler-config: ci
+      doppler-identity-id: ${{ vars.DOPPLER_IDENTITY_ID }}

@@ -1,0 +1,11 @@
+.git
+.venv
+.superpowers
+.pytest_cache
+.mypy_cache
+.ruff_cache
+dist
+build
+data
+bunker.toml
+**/__pycache__
