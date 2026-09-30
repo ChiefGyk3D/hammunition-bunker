@@ -1,0 +1,97 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 Renegade Penguin LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+"""The documentation is part of the deliverable, so it is tested: links and
+repository paths resolve, the reference names every key, command and
+document the code has, and the README ends as Hammunition's does."""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+from bunker import cli, config
+
+ROOT = Path(__file__).resolve().parent.parent
+HAMMUNITION_README = ROOT.parent / "Hammunition" / "README.md"
+TAIL = ROOT / "tests" / "data" / "support-tail.md"
+DOCS = sorted(
+    [ROOT / "README.md", ROOT / "CONTRIBUTING.md", ROOT / "CHANGELOG.md", ROOT / "CLAUDE.md"]
+    + [p for p in (ROOT / "docs").rglob("*.md") if "superpowers" not in p.parts]
+)
+REPO_DIRS = ("src/", "tests/", "docs/", "packaging/", ".github/", "media/")
+HEADING = "## 💝 Support This Project"
+
+
+def test_there_are_docs() -> None:
+    names = {p.relative_to(ROOT).as_posix() for p in DOCS}
+    assert {"README.md", "docs/guide.md", "docs/reference.md"} <= names
+
+
+@pytest.mark.parametrize("path", DOCS, ids=lambda p: p.relative_to(ROOT).as_posix())
+def test_links_resolve(path: Path) -> None:
+    text = path.read_text(encoding="utf-8")
+    targets = re.findall(r"\]\(([^)\s]+)\)", text) + re.findall(r'src="([^"]+)"', text)
+    for target in targets:
+        if re.match(r"^[a-z]+:", target) or target.startswith("#"):
+            continue
+        file = target.split("#", 1)[0]
+        assert (path.parent / file).exists(), f"{path.name}: {target} does not exist"
+
+
+@pytest.mark.parametrize("path", DOCS, ids=lambda p: p.relative_to(ROOT).as_posix())
+def test_backticked_repo_paths_exist(path: Path) -> None:
+    """This project's prose cites files by backtick, so a markdown-only link
+    check would validate almost nothing (the parent project's lesson)."""
+    for token in re.findall(r"`([^`\s]+)`", path.read_text(encoding="utf-8")):
+        if token.startswith(REPO_DIRS) and "<" not in token and "*" not in token:
+            assert (ROOT / token.rstrip("/")).exists(), f"{path.name}: `{token}` does not exist"
+
+
+def test_readme_ends_with_hammunitions_support_and_socials() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert HEADING in readme
+    assert readme[readme.index(HEADING) :] == TAIL.read_text(encoding="utf-8")
+
+
+@pytest.mark.skipif(
+    not HAMMUNITION_README.exists(), reason="no Hammunition checkout beside this one"
+)
+def test_the_tail_is_still_hammunitions() -> None:
+    source = HAMMUNITION_README.read_text(encoding="utf-8")
+    assert source[source.index(HEADING) :] == TAIL.read_text(encoding="utf-8")
+
+
+def reference() -> str:
+    return (ROOT / "docs" / "reference.md").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("key", [f"{t}.{k}" for t, keys in config._KNOWN.items() for k in keys])
+def test_every_config_key_is_documented(key: str) -> None:
+    assert f"`{key}`" in reference()
+
+
+@pytest.mark.parametrize("command", sorted(cli.COMMANDS))
+def test_every_command_is_documented(command: str) -> None:
+    assert f"`bunker {command}" in reference()
+
+
+@pytest.mark.parametrize("kind", sorted(p.stem for p in (ROOT / "tests" / "golden").glob("*.json")))
+def test_every_document_is_documented(kind: str) -> None:
+    assert f"`{kind}`" in reference()
+
+
+def test_the_example_config_is_the_reference_config() -> None:
+    """Every key the example sets is one the reference documents."""
+    example = (ROOT / "config.example.toml").read_text(encoding="utf-8")
+    table = ""
+    for line in example.splitlines():
+        header = re.match(r"^\[([a-z.]+)\]", line)
+        if header:
+            table = header.group(1)
+            continue
+        key = re.match(r"^([a-z_]+) =", line)
+        if key and "." not in table:
+            assert f"`{table}.{key.group(1)}`" in reference()
