@@ -1,0 +1,21 @@
+# Anchored to the repository root unless listed, with its reason, in
+# tests/test_repo_hygiene.py's UNANCHORED. A trailing slash anchors nothing.
+
+# Python
+__pycache__/
+*.py[cod]
+/.venv
+/src/*.egg-info
+/build
+/dist
+/.pytest_cache
+/.mypy_cache
+/.ruff_cache
+
+# An operator's own config and a scratch volume never belong in the repo:
+# the real selection lives on the NAS.
+/bunker.toml
+/data
+
+# The plan executor's workspace
+/.superpowers/

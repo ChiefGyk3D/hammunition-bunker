@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hammunition-bunker"
+# Single-sourced from the package, so `bunker --version`, the wheel and the
+# JSON envelope cannot disagree.
+dynamic = ["version"]
+description = "A verified LAN mirror of Hammunition's offline data, for a NAS"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "GPL-3.0-or-later" }
+authors = [{ name = "ChiefGyk3D" }]
+keywords = ["ham-radio", "amateur-radio", "mirror", "offline", "nas"]
+
+# One dependency, and it is the engine: the Bunker imports its verified fetch
+# rather than carrying a second verifier. Pinned by git tag because the
+# engine is installed from its repository, not an index; the tag is the
+# release with `hammunition artifacts` and the LAN mirror (D-070). For
+# development against an unreleased engine, see CONTRIBUTING.md.
+dependencies = [
+    "hammunition @ git+https://github.com/ChiefGyk3D/Hammunition@v0.16.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "mypy>=1.10", "ruff>=0.5", "PyYAML>=6.0"]
+
+[project.scripts]
+bunker = "bunker.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ChiefGyk3D/hammunition-bunker"
+Engine = "https://github.com/ChiefGyk3D/Hammunition"
+
+[tool.setuptools.dynamic]
+version = { attr = "bunker.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+bunker = ["py.typed"]
+
+# mypy --strict is a gate, as in the parent project.
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src", "tests"]
+warn_unreachable = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+module = ["yaml.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "S", "RUF"]
+ignore = [
+    "E501",  # line length is the formatter's
+    "S104",  # binding 0.0.0.0 inside the container is the point; the compose file scopes it
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests assert, run subprocesses they wrote themselves, and bind loopback.
+"tests/*" = ["S101", "S603", "S607", "S108"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+addopts = "-q --strict-markers"
