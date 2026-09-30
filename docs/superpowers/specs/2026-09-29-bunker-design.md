@@ -75,7 +75,8 @@ document) carries, per artifact:
 | `name` | the artifact's stable name within the unit (region path, tile name, book name) |
 | `url` | the publisher URL the engine itself would fetch |
 | `check` | `sha256` (pinned by Hammunition), `md5-publisher` (Geofabrik's published MD5, fetched at plan time), `etag-md5` (Copernicus object metadata), or `sha256-publisher` (a `.meta4`/`.sha256` the engine reads) |
-| `digest` | the expected digest when `check` is `sha256`; otherwise the URL of the publisher's checksum, and the digest itself once the engine has read it |
+| `digest` | always a hex digest, or null until the publisher's checksum has been read (D-070 as built: the field is never a URL) |
+| `checksum_url` | where the publisher's checksum comes from when `check` is not `sha256`: the `.md5` URL, or the object URL whose HEAD carries the ETag |
 | `size` | bytes, when known before the fetch |
 | `licence` | the licence line the plan prints |
 | `deferred` | null, or the reason this artifact cannot be listed for this selection |
@@ -91,6 +92,13 @@ Station config gains one optional key:
 ```
 hammunition station set --mirror http://bunker.lan:8080/
 ```
+
+`--clear-mirror` removes it. As built (D-070): only data is mirrored (data
+files, map regions, terrain tiles), never source tarballs, binaries or
+wheels; a mirror that does not answer within 10 s is skipped for the rest of
+the run; every data fetch logs its source; the plan's *Data mirror* section
+appears only when a step would ask the mirror; and a mirror does not make an
+install work offline, because the plan still asks the publishers.
 
 When set, the engine's verified fetch tries `<mirror>/<unit>/<name>` first
 and falls back to the publisher URL on any failure (unreachable, 404, wrong
