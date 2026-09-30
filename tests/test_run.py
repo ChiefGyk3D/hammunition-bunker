@@ -1,0 +1,425 @@
+# SPDX-FileCopyrightText: Copyright (C) 2026 Renegade Penguin LLC
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+"""One pass, end to end: the fake engine lists, the loopback publisher
+serves, the engine's own Fetcher verifies, the volume is a temp directory."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from bunker import config, index, run, volume
+from bunker.volume import Locked, RunLock
+from tests.conftest import FakeEngine, Publisher
+from tests.helpers import artifacts_doc, config_text, deferred, entry
+
+T0 = datetime(2026, 9, 29, 3, 0, 0, tzinfo=UTC)
+REGION = "north-america/us/vermont"
+TILE = "Copernicus_DSM_COG_10_N44_00_W073_00_DEM"
+
+
+def sha(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def md5(data: bytes) -> str:
+    return hashlib.md5(data, usedforsecurity=False).hexdigest()
+
+
+class Clock:
+    def __init__(self) -> None:
+        self.now = T0
+
+    def __call__(self) -> datetime:
+        return self.now
+
+    def advance(self, **delta: float) -> None:
+        self.now += timedelta(**delta)
+
+
+class Scene:
+    """Three artifacts, one of each check the catalog uses today."""
+
+    def __init__(self, tmp_path: Path, engine: FakeEngine, pub: Publisher) -> None:
+        self.tmp = tmp_path
+        self.engine = engine
+        self.pub = pub
+        self.root = tmp_path / "vol"
+        self.clock = Clock()
+        self.data = {
+            "cty": b"country files " * 100,
+            "region": b"osm region pbf " * 3000,
+            "tile": b"elevation tile " * 2000,
+        }
+        self.extra = ""
+        self.publish()
+
+    def publish(self, **changes: bytes) -> None:
+        self.data.update(changes)
+        self.cty_url = self.pub.put("/cf/bigcty-20260906.zip", self.data["cty"])
+        self.region_url = self.pub.put(
+            "/geofabrik/north-america/us/vermont-260101.osm.pbf", self.data["region"]
+        )
+        self.tile_url = self.pub.put(f"/cop/{TILE}.tif", self.data["tile"])
+        self.list()
+
+    def entries(self) -> list[dict[str, Any]]:
+        d = self.data
+        return [
+            entry(
+                "country-files",
+                "cty.dat",
+                self.cty_url,
+                "sha256",
+                sha(d["cty"]),
+                size=len(d["cty"]),
+                licence="Free for amateur use",
+            ),
+            entry(
+                "osm-regions",
+                REGION,
+                self.region_url,
+                "md5-publisher",
+                md5(d["region"]),
+                checksum_url=self.region_url + ".md5",
+                size=len(d["region"]),
+                licence="ODbL 1.0",
+            ),
+            entry(
+                "dem-copernicus",
+                TILE,
+                self.tile_url,
+                "etag-md5",
+                md5(d["tile"]),
+                checksum_url=self.tile_url,
+                size=len(d["tile"]),
+                licence="Copernicus DEM licence",
+            ),
+        ]
+
+    def list(self, entries: list[dict[str, Any]] | None = None) -> None:
+        self.engine.set_doc(
+            artifacts_doc(entries if entries is not None else self.entries(), regions=(REGION,))
+        )
+
+    def cfg(self) -> config.Config:
+        path = self.tmp / "bunker.toml"
+        path.write_text(
+            config_text(
+                str(self.root),
+                selection=f'map_regions = ["{REGION}"]',
+                extra='[schedule]\ndefault = "daily"\n' + self.extra,
+            )
+        )
+        return config.load(path)
+
+    def run(self, **kw: Any) -> run.RunReport:
+        return run.run(self.cfg(), now=self.clock, **kw)
+
+    def entry(self, unit: str, name: str) -> index.Entry:
+        found = index.load(self.root).find(unit, name)
+        assert found is not None
+        return found
+
+    def file(self, unit: str, name: str) -> Path:
+        path = self.entry(unit, name).path
+        assert path is not None
+        return self.root / path
+
+
+@pytest.fixture
+def scene(tmp_path: Path, fake_engine: FakeEngine, publisher: Publisher) -> Scene:
+    return Scene(tmp_path, fake_engine, publisher)
+
+
+def actions(report: run.RunReport) -> dict[str, str]:
+    return {o.name: o.action for o in report.outcomes}
+
+
+def test_first_run_fetches_everything(scene: Scene) -> None:
+    report = scene.run()
+    assert report.exit_code == 0, report.summary_lines()
+    assert actions(report) == {"cty.dat": "fetched", REGION: "fetched", TILE: "fetched"}
+    for unit, name, key in [
+        ("country-files", "cty.dat", "cty"),
+        ("osm-regions", REGION, "region"),
+        ("dem-copernicus", TILE, "tile"),
+    ]:
+        e = scene.entry(unit, name)
+        path = scene.file(unit, name)
+        assert path.read_bytes() == scene.data[key]
+        # The sidecar is sha256 of the bytes whatever the publisher's check was.
+        assert volume.read_sidecar(path) == sha(scene.data[key]) == e.sha256
+        assert e.status == "current" and e.reason is None
+        assert e.fetched == e.verified == "2026-09-29T03:00:00Z"
+    region = scene.entry("osm-regions", REGION)
+    assert region.path == f"osm-regions/{REGION}/vermont-260101.osm.pbf"
+    assert region.publisher_check == "md5-publisher"
+    assert region.publisher_digest == md5(scene.data["region"])
+    assert region.publisher_url == scene.region_url
+    raw = json.loads((scene.root / "index.json").read_text())
+    assert raw["engine"] == {"version": "0.16.0"}
+    assert raw["last_run"]["fetched"] == 3 and raw["last_run"]["failed"] == 0
+
+
+def test_second_run_fetches_nothing(scene: Scene) -> None:
+    scene.run()
+    before = scene.pub.total()
+    scene.clock.advance(hours=1)
+    report = scene.run()
+    assert report.exit_code == 0
+    assert scene.pub.total() == before
+    assert set(actions(report).values()) == {"verified"}  # auto: small files every run
+    assert report.counts()["fetched"] == 0
+
+
+def test_corrupted_file_is_refetched_and_reported(scene: Scene) -> None:
+    scene.run()
+    path = scene.file("osm-regions", REGION)
+    path.write_bytes(b"bit rot" + path.read_bytes()[7:])
+    report = scene.run()
+    outcome = next(o for o in report.outcomes if o.name == REGION)
+    assert outcome.corrupted and outcome.action == "fetched"
+    assert path.read_bytes() == scene.data["region"]
+    assert report.counts()["corrupted"] == 1
+    assert report.exit_code == 1  # corruption on the NAS is news even when repaired
+    assert any("corrupted" in line for line in report.summary_lines())
+
+
+def test_wrong_hash_keeps_previous_serving(scene: Scene) -> None:
+    scene.run()
+    good = scene.file("country-files", "cty.dat")
+    # The engine now pins new bytes, and the publisher serves something else.
+    new = b"new country files " * 50
+    entries = scene.entries()
+    entries[0]["digest"] = sha(new)
+    entries[0]["size"] = len(scene.data["cty"])
+    scene.list(entries)
+    scene.clock.advance(days=2)
+    report = scene.run()
+    outcome = next(o for o in report.outcomes if o.name == "cty.dat")
+    assert outcome.action == "failed"
+    assert "does not match" in (outcome.reason or "")
+    e = scene.entry("country-files", "cty.dat")
+    assert e.status == "failed"
+    assert good.read_bytes() == scene.data["cty"]  # still there, still served
+    assert scene.file("country-files", "cty.dat") == good
+    assert report.exit_code == 1
+
+
+def test_incoming_left_clean(scene: Scene) -> None:
+    entries = scene.entries()
+    entries[1]["digest"] = "0" * 32  # the region's MD5 will not match
+    scene.list(entries)
+    scene.run()
+    left = [p for p in (scene.root / ".incoming").rglob("*") if p.is_file()]
+    assert left == []
+
+
+def test_new_version_keeps_previous(scene: Scene) -> None:
+    scene.run()
+    old = scene.data["region"]
+    scene.pub.put("/geofabrik/north-america/us/vermont-260201.osm.pbf", b"next month " * 999)
+    entries = scene.entries()
+    entries[1].update(
+        url=scene.pub.base + "/geofabrik/north-america/us/vermont-260201.osm.pbf",
+        digest=md5(b"next month " * 999),
+        size=len(b"next month " * 999),
+    )
+    scene.list(entries)
+    scene.clock.advance(days=1)
+    report = scene.run()
+    assert actions(report)[REGION] == "fetched"
+    e = scene.entry("osm-regions", REGION)
+    assert e.path == f"osm-regions/{REGION}/vermont-260201.osm.pbf"
+    assert e.previous == f"osm-regions/{REGION}/vermont-260101.osm.pbf.previous"
+    assert (scene.root / e.previous).read_bytes() == old
+
+
+def test_cadence_per_unit(scene: Scene) -> None:
+    scene.extra = '[schedule.units]\ncountry-files = "weekly"\ndem-copernicus = "never"\n'
+    scene.run()
+    new_cty, new_tile = b"cty v2 " * 70, b"tile v2 " * 900
+    scene.publish(cty=new_cty, tile=new_tile)
+    scene.clock.advance(days=3)
+    report = scene.run()
+    got = actions(report)
+    assert got["cty.dat"] == "stale"  # weekly, fetched three days ago
+    assert got[TILE] == "stale"  # never
+    e = scene.entry("country-files", "cty.dat")
+    assert e.status == "stale" and "weekly" in (e.reason or "")
+    scene.clock.advance(days=4)
+    assert actions(scene.run())["cty.dat"] == "fetched"  # a week has passed
+    assert actions(scene.run())[TILE] == "stale"
+    assert actions(scene.run(units=("dem-copernicus",)))[TILE] == "fetched"
+
+
+def test_all_fetches_what_is_not_due(scene: Scene) -> None:
+    scene.extra = '[schedule.units]\ndem-copernicus = "never"\n'
+    scene.run()
+    scene.publish(tile=b"tile v3 " * 900)
+    assert actions(scene.run(all_=True))[TILE] == "fetched"
+
+
+def test_unit_filter_touches_only_that_unit(scene: Scene) -> None:
+    scene.run()
+    report = scene.run(units=("osm-regions",))
+    assert set(actions(report)) == {REGION}
+    assert scene.entry("country-files", "cty.dat").status == "current"
+
+
+def test_an_unknown_unit_filter_is_an_error(scene: Scene) -> None:
+    report = scene.run(units=("osm-regionz",))
+    assert report.exit_code == 1
+    assert "osm-regionz" in (report.error or "")
+    assert report.outcomes == []
+
+
+def test_a_missing_file_is_fetched_even_on_never(scene: Scene) -> None:
+    scene.extra = '[schedule.units]\ndem-copernicus = "never"\n'
+    assert actions(scene.run())[TILE] == "fetched"
+
+
+def test_verify_cadence_large_files(scene: Scene, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(run, "LARGE", 10_000)  # the region and the tile are "large" here
+    scene.run()
+    scene.clock.advance(days=1)
+    got = actions(scene.run())
+    assert got["cty.dat"] == "verified"
+    assert got[REGION] == got[TILE] == "unchanged"
+    scene.clock.advance(days=30)
+    assert actions(scene.run())[REGION] == "verified"
+
+
+def test_lock(scene: Scene) -> None:
+    with RunLock(scene.root), pytest.raises(Locked):
+        scene.run()
+
+
+def test_engine_failure_is_recorded(scene: Scene) -> None:
+    scene.run()
+    scene.engine.set_exit(2, "error: could not find the catalog\n")
+    report = scene.run()
+    assert report.exit_code == 1
+    assert "could not find the catalog" in (report.error or "")
+    idx = index.load(scene.root)
+    assert len(idx.artifacts) == 3  # what it holds is still served
+    assert idx.last_run is not None and "could not find" in idx.last_run["error"]
+    lines = (scene.root / ".runs.jsonl").read_text().splitlines()
+    assert json.loads(lines[-1])["error"].startswith("`hammunition")
+
+
+def test_unsafe_artifact_fails_alone(scene: Scene) -> None:
+    entries = scene.entries()
+    entries.append(
+        entry(
+            "osm-regions",
+            "../../../etc/cron.d/x",
+            scene.cty_url,
+            "sha256",
+            sha(scene.data["cty"]),
+            size=len(scene.data["cty"]),
+        )
+    )
+    scene.list(entries)
+    report = scene.run()
+    got = actions(report)
+    assert got["../../../etc/cron.d/x"] == "failed"
+    assert got["cty.dat"] == "fetched"
+    assert not (scene.tmp / "etc").exists()
+
+
+def test_no_digest_is_never_fetched(scene: Scene) -> None:
+    entries = scene.entries()
+    entries[0]["digest"] = None
+    scene.list(entries)
+    report = scene.run()
+    outcome = next(o for o in report.outcomes if o.name == "cty.dat")
+    assert outcome.action == "failed" and "no digest" in (outcome.reason or "")
+    assert scene.pub.requests("/cf/bigcty-20260906.zip") == 0
+
+
+def test_a_size_that_disagrees_fails(scene: Scene) -> None:
+    entries = scene.entries()
+    entries[0]["size"] = 5  # the pin is right, the listed size is not
+    scene.list(entries)
+    report = scene.run()
+    assert actions(report)["cty.dat"] == "failed"
+
+
+def test_dropped_entries(scene: Scene) -> None:
+    scene.run()
+    scene.list([*scene.entries()[:1], deferred("osm-regions", "Geofabrik did not answer", REGION)])
+    report = scene.run()
+    idx = index.load(scene.root)
+    names = {e.name for e in idx.artifacts}
+    assert REGION in names  # deferred this time: kept, not dropped
+    assert TILE not in names
+    assert [d["name"] for d in report.dropped] == [TILE]
+    assert scene.root.joinpath(f"dem-copernicus/{TILE}").is_dir()  # files are left for a person
+
+
+def test_runs_jsonl_appends(scene: Scene) -> None:
+    scene.run()
+    scene.run()
+    lines = [json.loads(x) for x in (scene.root / ".runs.jsonl").read_text().splitlines()]
+    assert len(lines) == 2
+    assert lines[0]["counts"]["fetched"] == 3 and lines[1]["counts"]["fetched"] == 0
+
+
+def test_two_downloads_at_a_time(scene: Scene) -> None:
+    scene.pub.delay = 0.2
+    scene.run()
+    assert scene.pub.max_active == 2
+
+
+def test_one_download_at_a_time(scene: Scene) -> None:
+    scene.pub.delay = 0.1
+    path = scene.tmp / "bunker.toml"
+    path.write_text(
+        f'[storage]\nroot = "{scene.root}"\ndownloads = 1\n'
+        f'[selection]\nmap_regions = ["{REGION}"]\n'
+    )
+    run.run(config.load(path), now=scene.clock)
+    assert scene.pub.max_active == 1
+
+
+def test_deferred_are_recorded(scene: Scene) -> None:
+    scene.list([*scene.entries(), deferred("kiwix-library", "no books selected")])
+    report = scene.run()
+    assert report.deferred == [
+        {"unit": "kiwix-library", "name": None, "reason": "no books selected"}
+    ]
+    assert index.load(scene.root).deferred == report.deferred
+
+
+def test_rate_limit_paces_bytes() -> None:
+    slept: list[float] = []
+    now = [0.0]
+
+    def clock() -> float:
+        return now[0]
+
+    def sleep(seconds: float) -> None:
+        slept.append(seconds)
+        now[0] += seconds
+
+    limit = run.RateLimit(None, rate=1000, clock=clock, sleep=sleep)  # type: ignore[arg-type]
+    for _ in range(3):
+        limit.consume(1000)
+    assert sum(slept) == pytest.approx(2.0)
+
+
+def test_due_arithmetic() -> None:
+    assert run.due("never", None, T0) is True  # never fetched at all
+    assert run.due("never", T0 - timedelta(days=400), T0) is False
+    assert run.due("daily", T0 - timedelta(hours=23, minutes=30), T0) is True  # within the slack
+    assert run.due("daily", T0 - timedelta(hours=12), T0) is False
+    assert run.due("weekly", T0 - timedelta(days=7), T0) is True
+    assert run.due("monthly", T0 - timedelta(days=29), T0) is False

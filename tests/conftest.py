@@ -14,10 +14,14 @@ Bunker's own server in these tests are real HTTP servers on 127.0.0.1.
 
 from __future__ import annotations
 
+import hashlib
+import http.server
 import json
 import os
 import socket
 import sys
+import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -123,3 +127,92 @@ class FakeEngine:
 @pytest.fixture
 def fake_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FakeEngine:
     return FakeEngine(tmp_path / "engine", monkeypatch)
+
+
+# ---------------------------------------------------------------------------
+# A publisher on loopback: serves bytes, their .md5, an ETag on HEAD.
+# ---------------------------------------------------------------------------
+
+
+class Publisher:
+    """A real HTTP server on 127.0.0.1 standing in for Geofabrik, the
+    Copernicus bucket and every other publisher. Files are set per path;
+    requests are counted; an optional delay lets a test see concurrency."""
+
+    def __init__(self) -> None:
+        self.files: dict[str, bytes] = {}
+        self.counts: dict[str, int] = {}
+        self.delay = 0.0
+        self.active = 0
+        self.max_active = 0
+        self._lock = threading.Lock()
+        publisher = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, format: str, *args: Any) -> None:
+                pass
+
+            def _serve(self, body: bool) -> None:
+                path = self.path.split("?", 1)[0]
+                with publisher._lock:
+                    publisher.counts[path] = publisher.counts.get(path, 0) + 1
+                    publisher.active += 1
+                    publisher.max_active = max(publisher.max_active, publisher.active)
+                try:
+                    if publisher.delay:
+                        time.sleep(publisher.delay)
+                    data = publisher.files.get(path)
+                    if data is None:
+                        self.send_error(404)
+                        return
+                    self.send_response(200)
+                    self.send_header("Content-Length", str(len(data)))
+                    md5 = hashlib.md5(data, usedforsecurity=False).hexdigest()
+                    self.send_header("ETag", f'"{md5}"')
+                    self.end_headers()
+                    if body:
+                        self.wfile.write(data)
+                finally:
+                    with publisher._lock:
+                        publisher.active -= 1
+
+            def do_GET(self) -> None:
+                self._serve(True)
+
+            def do_HEAD(self) -> None:
+                self._serve(False)
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.thread = threading.Thread(target=self.server.serve_forever, args=(0.05,), daemon=True)
+        self.thread.start()
+
+    @property
+    def base(self) -> str:
+        host, port = self.server.server_address[:2]
+        return f"http://{host!s}:{port}"
+
+    def put(self, path: str, data: bytes) -> str:
+        """Serve *data* at *path* (and its md5 at *path*.md5); return the URL."""
+        self.files[path] = data
+        md5 = hashlib.md5(data, usedforsecurity=False).hexdigest()
+        self.files[path + ".md5"] = f"{md5}  {path.rsplit('/', 1)[-1]}\n".encode()
+        return self.base + path
+
+    def requests(self, path: str) -> int:
+        return self.counts.get(path, 0)
+
+    def total(self) -> int:
+        return sum(n for p, n in self.counts.items() if not p.endswith(".md5"))
+
+    def close(self) -> None:
+        self.server.shutdown()
+        self.server.server_close()
+
+
+@pytest.fixture
+def publisher() -> Any:
+    pub = Publisher()
+    try:
+        yield pub
+    finally:
+        pub.close()
