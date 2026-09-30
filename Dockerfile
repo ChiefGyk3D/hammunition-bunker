@@ -23,7 +23,7 @@ FROM debian:trixie-slim
 ARG ENGINE_VERSION=0.16.0
 ARG ENGINE_URL=https://github.com/ChiefGyk3D/Hammunition/archive/refs/tags/v${ENGINE_VERSION}.tar.gz
 # Filled at the first release: sha256 of ENGINE_URL's bytes.
-ARG ENGINE_SHA256=UNSET
+ARG ENGINE_SHA256=3ede5cc4f2cb74bee3b08cb8ac4601e7c9d216436be515be42ed9cc17a855ce3
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
