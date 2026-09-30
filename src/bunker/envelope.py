@@ -90,7 +90,7 @@ def run_json(
         emitted = True
 
     saved = sys.stdout, sys.stderr
-    sys.stdout = sys.stderr = tee  # type: ignore[assignment]
+    sys.stdout = sys.stderr = tee
     code = 1
     try:
         code = func(emit)
