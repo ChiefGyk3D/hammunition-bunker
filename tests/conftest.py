@@ -27,6 +27,9 @@ from typing import Any
 
 import pytest
 
+#: The `scene` fixture (tests/scene.py), shared by the run, verify, server and CLI tests.
+pytest_plugins = ["tests.scene"]
+
 _real_connect = socket.socket.connect
 _real_connect_ex = socket.socket.connect_ex
 
