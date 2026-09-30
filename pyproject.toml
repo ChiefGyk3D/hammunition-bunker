@@ -63,6 +63,7 @@ src = ["src", "tests"]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "S", "RUF"]
 ignore = [
     "E501",  # line length is the formatter's
+    "SIM300",  # "Yoda" misfires on a constant compared with a literal
     "S104",  # binding 0.0.0.0 inside the container is the point; the compose file scopes it
 ]
 

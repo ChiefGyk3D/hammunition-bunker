@@ -1,0 +1,48 @@
+# Hammunition Bunker configuration. Copy to bunker.toml on the NAS and edit.
+# Every key is optional; what is shown is the default unless it says otherwise.
+# docs/reference.md describes each key.
+#
+# The regions below are public examples. Put your own selection in the copy
+# on the NAS, never in a repository or an issue: a list of map regions says
+# where a station is.
+
+[engine]
+# The hammunition executable the Bunker asks. Inside the image this is the
+# pinned release installed at build time; outside it, any path, or a list
+# of arguments.
+command = "hammunition"
+# The engine's catalog. The image sets HAMMUNITION_CATALOG instead; a host
+# install that runs the engine from a checkout can leave this out too.
+# catalog = "/opt/hammunition/catalog"
+# How long `hammunition artifacts` may take, in seconds. It asks Geofabrik
+# and the Copernicus bucket for checksums while it lists.
+timeout = 600
+
+[selection]
+map_regions = ["north-america/us/vermont", "north-america/us/new-hampshire"]
+map_freshness = "yearly"   # yearly | monthly | latest, as `hammunition station` takes it
+units = []                 # empty = everything `hammunition artifacts` lists
+
+[storage]
+root = "/data"             # the bind-mounted volume
+keep_previous = true       # the last good copy is kept beside the current one
+downloads = 2              # at a time, 1 to 4
+# max_rate = "20M"         # bytes per second across all downloads (K, M, G)
+
+[schedule]
+default = "weekly"         # never | daily | weekly | monthly
+run_at = "03:00"           # when `bunker schedule` runs each day (container clock)
+
+[schedule.units]
+osm-regions = "daily"
+dem-copernicus = "never"   # the pin changes only with a Hammunition release
+country-files = "monthly"
+
+[verify]
+# How often the bytes on disk are re-hashed against their sidecars.
+# auto = every run for files under 1 GiB, monthly above.
+default = "auto"           # auto | every-run | daily | weekly | monthly
+
+[serve]
+bind = "0.0.0.0"           # the container's interface; compose maps it to the LAN
+port = 8080
