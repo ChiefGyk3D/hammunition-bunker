@@ -1,0 +1,32 @@
+{
+  "schema": "bunker/1",
+  "kind": "status",
+  "engine": "<bunker version>",
+  "engine_version": "0.16.0",
+  "generated": "2026-09-29T03:00:00Z",
+  "last_run": {
+    "started": "2026-09-29T03:00:00Z",
+    "finished": "2026-09-29T03:00:00Z",
+    "fetched": 2,
+    "verified": 0,
+    "failed": 1,
+    "corrupted": 0,
+    "stale": 0,
+    "error": null
+  },
+  "counts": {
+    "current": 2,
+    "stale": 0,
+    "failed": 1,
+    "corrupted": 0
+  },
+  "not_current": [
+    {
+      "unit": "dem-copernicus",
+      "name": "Copernicus_DSM_COG_10_N44_00_W073_00_DEM",
+      "status": "failed",
+      "reason": "http://publisher.test/cop/Copernicus_DSM_COG_10_N44_00_W073_00_DEM.tif does not match the md5 its publisher lists.\n  expected md5: 00000000000000000000000000000000\n  actually got: 4d93559a87d31829a84e500caecd5e69\nThe download has been discarded."
+    }
+  ],
+  "deferred": []
+}

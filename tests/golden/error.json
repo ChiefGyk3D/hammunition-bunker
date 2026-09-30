@@ -1,0 +1,8 @@
+{
+  "schema": "bunker/1",
+  "kind": "error",
+  "engine": "<bunker version>",
+  "command": "serve",
+  "exit_code": 2,
+  "message": "bunker: `bunker serve` runs until stopped and has no --json form\n"
+}

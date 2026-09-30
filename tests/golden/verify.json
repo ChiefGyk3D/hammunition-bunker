@@ -1,0 +1,33 @@
+{
+  "schema": "bunker/1",
+  "kind": "verify",
+  "engine": "<bunker version>",
+  "started": "2026-09-29T03:00:00Z",
+  "finished": "2026-09-29T03:00:00Z",
+  "checked": 3,
+  "corrupted": 1,
+  "results": [
+    {
+      "unit": "country-files",
+      "name": "cty.dat",
+      "path": "country-files/cty.dat/bigcty-20260906.zip",
+      "ok": true,
+      "reason": null
+    },
+    {
+      "unit": "osm-regions",
+      "name": "north-america/us/vermont",
+      "path": "osm-regions/north-america/us/vermont/vermont-260101.osm.pbf",
+      "ok": false,
+      "reason": "its bytes no longer match its sidecar (sha256 0fc07c0c66c8…)"
+    },
+    {
+      "unit": "dem-copernicus",
+      "name": "Copernicus_DSM_COG_10_N44_00_W073_00_DEM",
+      "path": "dem-copernicus/Copernicus_DSM_COG_10_N44_00_W073_00_DEM/Copernicus_DSM_COG_10_N44_00_W073_00_DEM.tif",
+      "ok": true,
+      "reason": null
+    }
+  ],
+  "exit_code": 1
+}

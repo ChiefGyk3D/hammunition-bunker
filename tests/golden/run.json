@@ -1,0 +1,50 @@
+{
+  "schema": "bunker/1",
+  "kind": "run",
+  "engine": "<bunker version>",
+  "started": "2026-09-29T03:00:00Z",
+  "finished": "2026-09-29T03:00:00Z",
+  "engine_version": "0.16.0",
+  "counts": {
+    "fetched": 3,
+    "verified": 0,
+    "unchanged": 0,
+    "stale": 0,
+    "failed": 0,
+    "corrupted": 0,
+    "deferred": 0
+  },
+  "error": null,
+  "outcomes": [
+    {
+      "unit": "country-files",
+      "name": "cty.dat",
+      "action": "fetched",
+      "status": "current",
+      "reason": null,
+      "corrupted": false,
+      "size": 1400
+    },
+    {
+      "unit": "osm-regions",
+      "name": "north-america/us/vermont",
+      "action": "fetched",
+      "status": "current",
+      "reason": null,
+      "corrupted": false,
+      "size": 45000
+    },
+    {
+      "unit": "dem-copernicus",
+      "name": "Copernicus_DSM_COG_10_N44_00_W073_00_DEM",
+      "action": "fetched",
+      "status": "current",
+      "reason": null,
+      "corrupted": false,
+      "size": 30000
+    }
+  ],
+  "deferred": [],
+  "dropped": [],
+  "exit_code": 0
+}

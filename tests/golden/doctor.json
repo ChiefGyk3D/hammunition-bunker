@@ -1,0 +1,28 @@
+{
+  "schema": "bunker/1",
+  "kind": "doctor",
+  "engine": "<bunker version>",
+  "ok": true,
+  "checks": [
+    {
+      "name": "config",
+      "ok": true,
+      "detail": "<tmp>/bunker.toml parses"
+    },
+    {
+      "name": "engine",
+      "ok": true,
+      "detail": "Hammunition 0.16.0 answers (floor 0.16.0)"
+    },
+    {
+      "name": "volume",
+      "ok": true,
+      "detail": "<tmp>/vol is writable; its index lists 0"
+    },
+    {
+      "name": "port",
+      "ok": true,
+      "detail": "127.0.0.1:<port> binds"
+    }
+  ]
+}
