@@ -21,6 +21,14 @@ timeout = 600
 [selection]
 map_regions = ["north-america/us/vermont", "north-america/us/new-hampshire"]
 map_freshness = "yearly"   # yearly | monthly | latest, as `hammunition station` takes it
+# Kiwix book ids (`hammunition reference books` lists them), e.g.
+# ["ham.stackexchange.com_en_all", "electronics.stackexchange.com_en_all"]
+# (catalog/data/kiwix-books.yaml in Hammunition). Books are the largest
+# artifacts a Bunker can hold -- a single Wikipedia ZIM runs to gigabytes --
+# so this stays empty by default: with none selected, `kiwix-library` is
+# deferred as "no books selected" rather than fetched. Needs the Hammunition
+# release that carries #178 (the next release after v0.18.0, until tagged).
+reference_books = []
 units = []                 # empty = everything `hammunition artifacts` lists
 
 [storage]

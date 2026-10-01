@@ -27,7 +27,9 @@ def test_argv_carries_the_selection(tmp_path: Path) -> None:
         tmp_path,
         selection=(
             'map_regions = ["north-america/us/vermont", "north-america/us/delaware"]\n'
-            'map_freshness = "monthly"\nunits = ["osm-regions", "dem-copernicus"]'
+            'map_freshness = "monthly"\n'
+            'reference_books = ["ham.stackexchange.com_en_all"]\n'
+            'units = ["osm-regions", "dem-copernicus"]'
         ),
         extra='[engine]\ncommand = ["hammunition"]\ncatalog = "/opt/h/catalog"\n',
     )
@@ -41,8 +43,30 @@ def test_argv_carries_the_selection(tmp_path: Path) -> None:
         "monthly",
         "--map-regions",
         "north-america/us/vermont,north-america/us/delaware",
+        "--reference-books",
+        "ham.stackexchange.com_en_all",
         "--units",
         "osm-regions,dem-copernicus",
+    ]
+
+
+def test_argv_carries_reference_books_alone(tmp_path: Path) -> None:
+    c = cfg(
+        tmp_path,
+        selection=(
+            "map_regions = []\n"
+            'reference_books = ["ham.stackexchange.com_en_all", '
+            '"electronics.stackexchange.com_en_all"]\n'
+        ),
+    )
+    assert engine.argv(c) == [
+        "hammunition",
+        "artifacts",
+        "--json",
+        "--map-freshness",
+        "yearly",
+        "--reference-books",
+        "ham.stackexchange.com_en_all,electronics.stackexchange.com_en_all",
     ]
 
 
@@ -92,6 +116,48 @@ def test_a_canned_document_parses(tmp_path: Path, fake_engine: FakeEngine) -> No
         "dem-copernicus": "ODbL 1.0",
     }
     assert fake_engine.calls()[-1][:2] == ["artifacts", "--json"]
+
+
+def test_a_kiwix_book_is_a_plain_sha256_artifact(tmp_path: Path, fake_engine: FakeEngine) -> None:
+    """Hammunition #178 lists each selected book as `unit: kiwix-library`,
+    `check: sha256`; the engine contract needs nothing book-specific."""
+    fake_engine.set_doc(
+        artifacts_doc(
+            [
+                entry(
+                    "kiwix-library",
+                    "ham.stackexchange.com_en_all",
+                    "https://download.kiwix.org/zim/stack_exchange/"
+                    "ham.stackexchange.com_en_all_2026-08.zim",
+                    "sha256",
+                    SHA,
+                    size=76000000,
+                    licence="CC BY-SA",
+                )
+            ]
+        )
+    )
+    listing = engine.ask_engine(cfg(tmp_path))
+    assert [a.unit for a in listing.artifacts] == ["kiwix-library"]
+    book = listing.artifacts[0]
+    assert book.name == "ham.stackexchange.com_en_all"
+    assert book.check == "sha256"
+    assert book.digest == SHA
+    assert book.size == 76000000
+    assert book.licence == "CC BY-SA"
+
+
+def test_no_books_selected_defers_kiwix_library(tmp_path: Path, fake_engine: FakeEngine) -> None:
+    """With no `--reference-books`, the engine defers the whole unit (D-070's
+    2026-10-01 amendment, D-066) rather than listing nothing silently."""
+    reason = (
+        "no books selected: pass --reference-books with Kiwix book ids "
+        "(`hammunition reference books` lists them)"
+    )
+    fake_engine.set_doc(artifacts_doc([deferred("kiwix-library", reason)]))
+    listing = engine.ask_engine(cfg(tmp_path))
+    assert listing.artifacts == ()
+    assert listing.deferred == (engine.Deferred("kiwix-library", None, reason),)
 
 
 def test_non_zero_exit_carries_the_engines_stderr(tmp_path: Path, fake_engine: FakeEngine) -> None:

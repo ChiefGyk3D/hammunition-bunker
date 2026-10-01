@@ -24,6 +24,9 @@ behaviour; where a step is a guess about a NAS's defaults, it says so.
   terrain alone can be several gigabytes; a region's map is tens to hundreds
   of megabytes.
 - The laptop running Hammunition 0.16.0 or later (`hammunition --version`).
+  Selecting reference books (`selection.reference_books` below) needs the
+  release that carries #178 (the next release after v0.18.0, until it is
+  tagged); everything else works on 0.16.0.
 
 ## 1. Choose what to keep
 
@@ -33,6 +36,7 @@ Copy `config.example.toml` to `bunker.toml` and edit `[selection]`:
 [selection]
 map_regions = ["north-america/us/vermont", "north-america/us/new-hampshire"]
 map_freshness = "yearly"
+reference_books = []
 units = []
 ```
 
@@ -46,6 +50,15 @@ engine's own listing on any machine with Hammunition:
 ```
 hammunition artifacts --map-regions north-america/us/vermont
 ```
+
+`reference_books` are Kiwix book ids, the same ones
+`hammunition station set --reference-books` takes
+(`hammunition reference books` lists them, e.g. `ham.stackexchange.com_en_all`
+for the Amateur Radio Stack Exchange). **Books are the largest artifacts a
+Bunker can hold** — a full Wikipedia ZIM runs to gigabytes — so, unlike
+`units`, an empty list here means *none*, not *everything*: the Bunker
+defers `kiwix-library` as "no books selected" rather than fetching the
+whole Kiwix catalog. Name the ones you want.
 
 **Keep your real selection on the Bunker's machine.** A list of map regions
 says where a station is; it does not belong in a repository, an issue or a

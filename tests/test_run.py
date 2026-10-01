@@ -280,6 +280,38 @@ def test_deferred_are_recorded(scene: Scene) -> None:
     assert index.load(scene.root).deferred == report.deferred
 
 
+def test_a_reference_book_is_fetched_through_the_normal_run_path(scene: Scene) -> None:
+    """A Kiwix book (Hammunition #178, `unit: kiwix-library`) is a plain
+    `sha256` artifact; the run needs nothing book-specific to fetch and
+    verify one."""
+    book = b"a tiny zim file " * 500
+    book_url = scene.pub.put("/zim/ham.stackexchange.com_en_all.zim", book)
+    scene.list(
+        [
+            *scene.entries(),
+            entry(
+                "kiwix-library",
+                "ham.stackexchange.com_en_all",
+                book_url,
+                "sha256",
+                sha(book),
+                size=len(book),
+                licence="CC BY-SA",
+            ),
+        ]
+    )
+    report = scene.run()
+    assert report.exit_code == 0, report.summary_lines()
+    assert actions(report)["ham.stackexchange.com_en_all"] == "fetched"
+    e = scene.entry("kiwix-library", "ham.stackexchange.com_en_all")
+    assert e.status == "current" and e.reason is None
+    assert e.publisher_check == "sha256"
+    assert e.licence == "CC BY-SA"
+    path = scene.file("kiwix-library", "ham.stackexchange.com_en_all")
+    assert path.read_bytes() == book
+    assert volume.read_sidecar(path) == sha(book) == e.sha256
+
+
 def test_rate_limit_paces_bytes() -> None:
     slept: list[float] = []
     now = [0.0]

@@ -98,6 +98,8 @@ def argv(cfg: Config) -> list[str]:
     out += ["artifacts", "--json", "--map-freshness", cfg.selection.map_freshness]
     if cfg.selection.map_regions:
         out += ["--map-regions", ",".join(cfg.selection.map_regions)]
+    if cfg.selection.reference_books:
+        out += ["--reference-books", ",".join(cfg.selection.reference_books)]
     if cfg.selection.units:
         out += ["--units", ",".join(cfg.selection.units)]
     return out

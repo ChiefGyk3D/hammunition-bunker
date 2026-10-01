@@ -58,6 +58,7 @@ refused by name. Relative paths resolve against the file's own directory.
 | `engine.timeout` | `600` | seconds `hammunition artifacts` may take; it asks publishers for checksums while it lists |
 | `selection.map_regions` | `[]` | Geofabrik region paths; none defers the map and terrain units |
 | `selection.map_freshness` | `"yearly"` | `yearly`, `monthly` or `latest`, as the engine takes it |
+| `selection.reference_books` | `[]` | Kiwix book ids (`hammunition reference books` lists them; D-066). Books are the largest artifacts a Bunker can hold, so unlike `units`, none does not mean "everything": it defers `kiwix-library` as *no books selected*. Needs the Hammunition release that carries #178 (the next release after v0.18.0, until it is tagged) |
 | `selection.units` | `[]` | the units to keep; empty is everything the engine lists |
 | `storage.root` | `"/data"` | the volume |
 | `storage.keep_previous` | `true` | keep the last good copy beside the current one (one, never more) |

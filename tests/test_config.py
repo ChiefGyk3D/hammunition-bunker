@@ -25,6 +25,7 @@ def test_the_example_loads() -> None:
     cfg = config.load(EXAMPLE)
     assert cfg.engine.command == ("hammunition",)
     assert cfg.selection.map_freshness == "yearly"
+    assert cfg.selection.reference_books == ()
     assert cfg.storage.root == Path("/data")
     assert cfg.serve.port == 8080
     assert cfg.schedule.cadence("osm-regions") == "daily"
@@ -42,12 +43,25 @@ def test_example_regions_are_public_examples_only() -> None:
     assert set(cfg.selection.map_regions) <= allowed
 
 
+def test_example_names_public_book_ids_in_its_comment_only() -> None:
+    """`reference_books` stays empty in the example -- books are the
+    largest artifacts a Bunker can hold, so none is fetched by default --
+    but its comment names two public Hammunition catalog ids, never a real
+    selection."""
+    text = EXAMPLE.read_text(encoding="utf-8")
+    assert "ham.stackexchange.com_en_all" in text
+    assert "electronics.stackexchange.com_en_all" in text
+    cfg = config.load(EXAMPLE)
+    assert cfg.selection.reference_books == ()
+
+
 def test_defaults_are_the_specs(tmp_path: Path) -> None:
     cfg = config.load(write(tmp_path, ""))
     assert cfg.engine.command == ("hammunition",)
     assert cfg.engine.catalog is None
     assert cfg.selection.map_regions == ()
     assert cfg.selection.map_freshness == "yearly"
+    assert cfg.selection.reference_books == ()
     assert cfg.selection.units == ()
     assert cfg.storage.root == Path("/data")
     assert cfg.storage.keep_previous is True
@@ -84,6 +98,7 @@ def test_relative_root_resolves_against_the_config(tmp_path: Path) -> None:
         ("[serve]\nport = 70000\n", "serve.port"),
         ('[selection]\nmap_freshness = "daily"\n', "selection.map_freshness"),
         ('[selection]\nmap_regions = "north-america/us/vermont"\n', "selection.map_regions"),
+        ("[selection]\nreference_books = [1]\n", "selection.reference_books"),
         ("[selection]\nunits = [1]\n", "selection.units"),
         ("[storage]\nkeep_previous = 1\n", "storage.keep_previous"),
         ('[storage]\nroot = ""\n', "storage.root"),
