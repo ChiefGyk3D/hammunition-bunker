@@ -50,7 +50,7 @@ DEFAULT_PATHS = (Path("/etc/bunker/bunker.toml"), Path("bunker.toml"))
 
 _KNOWN: dict[str, tuple[str, ...]] = {
     "engine": ("command", "catalog", "timeout"),
-    "selection": ("map_regions", "map_freshness", "units"),
+    "selection": ("map_regions", "map_freshness", "reference_books", "units"),
     "storage": ("root", "keep_previous", "downloads", "max_rate"),
     "schedule": ("default", "run_at", "units"),
     "verify": ("default", "units"),
@@ -78,6 +78,10 @@ class EngineConfig:
 class Selection:
     map_regions: tuple[str, ...] = ()
     map_freshness: str = "yearly"
+    reference_books: tuple[str, ...] = ()
+    """Kiwix book ids (D-066). Empty defers ``kiwix-library`` as *no books
+    selected*, unlike ``units``: a book is the largest kind of artifact a
+    Bunker can hold, so none is fetched without being named."""
     units: tuple[str, ...] = ()
     """Empty: everything ``hammunition artifacts`` lists for the selection."""
 
@@ -275,6 +279,7 @@ def load(path: Path) -> Config:
             map_freshness=_choice(
                 selection.get("map_freshness", "yearly"), "selection.map_freshness", FRESHNESS
             ),
+            reference_books=_strings(selection, "selection", "reference_books"),
             units=_strings(selection, "selection", "units"),
         ),
         storage=_storage(_table(data, "storage"), base),

@@ -10,6 +10,17 @@ Notable changes, newest first. Versions follow
 
 ## [Unreleased]
 
+### Added
+
+- `selection.reference_books` in `bunker.toml`: Kiwix book ids, passed to
+  the engine as `--reference-books` when non-empty (Hammunition #178). Each
+  selected book is a plain `sha256` artifact (`unit: kiwix-library`) and
+  needs nothing book-specific from the run path; none selected defers the
+  unit as "no books selected" like any other deferral. Books are the
+  largest artifacts a Bunker can hold, so the default stays empty. Needs
+  the Hammunition release that carries #178 (the next release after
+  v0.18.0, until it is tagged).
+
 ## [0.1.0] — unreleased
 
 The first cut, from the approved spec
