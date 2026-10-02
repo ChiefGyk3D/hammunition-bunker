@@ -82,6 +82,24 @@ def test_it_shows_what_the_spec_lists() -> None:
     assert "no books selected" in text  # deferred
     assert re.search(r"osm-regions</td>\s*<td>1</td>\s*<td>0</td>\s*<td>1</td>", text)
     assert "without authentication" in text  # the LAN notice
+    assert "Declined by your configuration" not in text
+
+
+def test_declined_has_its_own_section_after_engine_deferred() -> None:
+    text = page(
+        declined=[
+            {
+                "unit": "config-unit",
+                "name": "disabled",
+                "reason": "hold_unverified = false",
+            }
+        ]
+    )
+    deferred = text.split("<h2>Deferred by the engine</h2>", 1)[1].split("</ul>", 1)[0]
+    assert "Declined by your configuration" in text
+    assert "config-unit/disabled" not in deferred
+    assert text.index("Deferred by the engine") < text.index("Declined by your configuration")
+    assert "config-unit/disabled" in text and "hold_unverified = false" in text
 
 
 def test_an_engine_error_is_shown() -> None:

@@ -162,6 +162,13 @@ def render(index: Index, *, disk_used: int) -> str:
             out.append(f"<li><code>{_e(d.get('unit'))}{name}</code>: {_e(d.get('reason'))}</li>")
         out.append("</ul>")
 
+    if index.declined:
+        out.append("<h2>Declined by your configuration</h2><ul>")
+        for d in index.declined:
+            name = f"/{_e(d.get('name'))}" if d.get("name") else ""
+            out.append(f"<li><code>{_e(d.get('unit'))}{name}</code>: {_e(d.get('reason'))}</li>")
+        out.append("</ul>")
+
     out.append(
         "<h2>Licences</h2><p>What each unit's publisher permits; this mirror "
         "redistributes on your LAN under those terms.</p><ul>"

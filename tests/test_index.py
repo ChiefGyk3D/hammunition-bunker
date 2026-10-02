@@ -44,12 +44,13 @@ def test_round_trip(tmp_path: Path) -> None:
         engine_version="0.19.0",
         artifacts=[an_entry()],
         deferred=[{"unit": "kiwix-library", "name": None, "reason": "no books selected"}],
+        declined=[{"unit": "acma-register", "name": "spectra_rrl.zip", "reason": "disabled"}],
         last_run={"started": "s", "finished": "f", "fetched": 1, "verified": 0, "failed": 0},
     )
     index.save(tmp_path, idx, generated="2026-09-29T23:00:00Z")
     raw = json.loads((tmp_path / "index.json").read_text())
     assert raw["kind"] == "bunker-index"
-    assert raw["version"] == 1
+    assert raw["version"] == 2
     assert raw["generated"] == "2026-09-29T23:00:00Z"
     assert raw["engine"] == {"version": "0.19.0"}
     assert raw["artifacts"][0]["status"] == "current"
@@ -57,6 +58,7 @@ def test_round_trip(tmp_path: Path) -> None:
     assert loaded.artifacts == [an_entry()]
     assert loaded.find("osm-regions", "north-america/us/vermont") == an_entry()
     assert loaded.deferred == idx.deferred
+    assert loaded.declined == idx.declined
     assert loaded.last_run == idx.last_run
 
 
@@ -85,7 +87,7 @@ def test_an_entry_missing_a_field_refuses(tmp_path: Path) -> None:
 
 
 def test_index_newer_refuses(tmp_path: Path) -> None:
-    (tmp_path / "index.json").write_text(json.dumps({"kind": "bunker-index", "version": 2}))
+    (tmp_path / "index.json").write_text(json.dumps({"kind": "bunker-index", "version": 3}))
     with pytest.raises(IndexRefused, match="newer"):
         index.load(tmp_path)
 
@@ -93,9 +95,7 @@ def test_index_newer_refuses(tmp_path: Path) -> None:
 def test_an_older_index_is_upgraded_in_place(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The mechanism the first format change will use: vN -> vN+1, applied in
-    order, written back. Version 1 is the first, so the upgrade here is a
-    stand-in for the one a later release adds."""
+    """Upgrades are applied in order and written back."""
 
     def v0_to_v1(raw: dict[str, Any]) -> dict[str, Any]:
         return {**raw, "version": 1, "artifacts": [], "deferred": [], "last_run": None}
@@ -103,7 +103,31 @@ def test_an_older_index_is_upgraded_in_place(
     monkeypatch.setitem(index.UPGRADES, 0, v0_to_v1)
     (tmp_path / "index.json").write_text(json.dumps({"kind": "bunker-index", "version": 0}))
     assert index.load(tmp_path).artifacts == []
-    assert json.loads((tmp_path / "index.json").read_text())["version"] == 1
+    assert json.loads((tmp_path / "index.json").read_text())["version"] == 2
+
+
+def test_version_1_index_is_upgraded_without_reclassifying_deferred(
+    tmp_path: Path,
+) -> None:
+    index.save(
+        tmp_path,
+        Index(deferred=[{"unit": "acma-register", "name": "spectra_rrl.zip", "reason": "old"}]),
+        generated="g",
+    )
+    path = tmp_path / "index.json"
+    raw = json.loads(path.read_text())
+    raw["version"] = 1
+    del raw["declined"]
+    path.write_text(json.dumps(raw))
+
+    loaded = index.load(tmp_path)
+    upgraded = json.loads(path.read_text())
+    assert loaded.deferred == [
+        {"unit": "acma-register", "name": "spectra_rrl.zip", "reason": "old"}
+    ]
+    assert loaded.declined == []
+    assert upgraded["version"] == 2 and upgraded["declined"] == []
+    assert upgraded["deferred"] == loaded.deferred
 
 
 def test_an_older_index_with_no_upgrade_refuses(tmp_path: Path) -> None:

@@ -71,6 +71,7 @@ def _status_body(idx: index.Index) -> dict[str, Any]:
             if e.status != "current"
         ],
         "deferred": idx.deferred,
+        "declined": idx.declined,
         "unverified": [
             {
                 "unit": e.unit,
@@ -114,6 +115,9 @@ def cmd_status(args: argparse.Namespace, emit: Emit | None) -> int:
     for d in body["deferred"]:
         name = f"/{d['name']}" if d.get("name") else ""
         print(f"  deferred: {d['unit']}{name}: {d['reason']}")
+    for d in body["declined"]:
+        name = f"/{d['name']}" if d.get("name") else ""
+        print(f"  declined: {d['unit']}{name}: {d['reason']}")
     if body["unverified"]:
         print(f"{checks.UNVERIFIED_LABEL} ({len(body['unverified'])}):")
         for u in body["unverified"]:

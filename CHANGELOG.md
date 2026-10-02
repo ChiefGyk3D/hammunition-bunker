@@ -12,6 +12,10 @@ Notable changes, newest first. Versions follow
 
 ### Changed
 
+- `index.json` is version 2, with a separate persisted `declined` list so
+  status identifies artifacts declined by configuration rather than by the
+  engine. Version-1 indexes upgrade without reclassifying their `deferred`
+  entries.
 - The engine pin is Hammunition v0.19.0 (was v0.16.0): `ENGINE_FLOOR`,
   `pyproject.toml`, the Dockerfile (tag and the tag archive's sha256, measured
   twice) and the live workflow's ref. `Fetcher.fetch_sha1`,
