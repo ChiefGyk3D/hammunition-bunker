@@ -441,7 +441,8 @@ class _Pass:
                 # sidecar like any other.
                 # A copy `bunker verify` found damaged is fetched again at once.
                 forced = entry.status == "corrupted"
-                matches, hashed = not (forced or self._fetch_due(artifact, entry)), False
+                due_now = forced or self._fetch_due(artifact, entry)
+                matches, hashed = (not due_now), False
                 if forced:
                     corrupted = True
             else:
