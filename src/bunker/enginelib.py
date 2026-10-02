@@ -18,6 +18,9 @@ keep that true.
 
 from __future__ import annotations
 
+import importlib
+from types import ModuleType
+
 import hammunition.backends  # noqa: F401 - must precede hammunition.fetch; see above
 from hammunition.backends.base import BackendError
 from hammunition.fetch import (
@@ -40,5 +43,20 @@ __all__ = [
     "RemoteArtifact",
     "Transport",
     "UrllibTransport",
+    "acma",
     "safe_name",
 ]
+
+
+def acma() -> ModuleType:
+    """``hammunition.acma``, the engine's own reader and check for the ACMA
+    register (D-074). Imported when needed: the pinned floor release does not
+    have it, and a Bunker on that release must still start."""
+    try:
+        return importlib.import_module("hammunition.acma")
+    except ImportError:
+        raise BackendError(
+            "the installed Hammunition has no hammunition.acma, which the "
+            "unverified-zip check (the ACMA register, D-074) needs; install the "
+            "Hammunition release that carries it"
+        ) from None

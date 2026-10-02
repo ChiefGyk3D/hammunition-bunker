@@ -9,7 +9,10 @@ does not know, an ``error`` document or an entry missing a field fails the
 whole run, loudly, with what the engine said. A field the engine added
 within its major is tolerated (D-059 allows that), and an entry whose
 ``check`` this Bunker does not know is deferred by name rather than
-guessed at: nothing is downloaded that cannot be verified.
+guessed at: nothing is downloaded that cannot be verified. That entry is
+*refused* by name, with the engine's version, and fails the run's exit code:
+a kind this Bunker does not know means the engine has outgrown it, and a
+mirror that quietly stopped keeping something is the failure to avoid.
 """
 
 from __future__ import annotations
@@ -21,7 +24,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from bunker import ENGINE_FLOOR
+from bunker import ENGINE_CONTRACT, ENGINE_FLOOR
+from bunker.checks import KINDS
 from bunker.config import Config
 
 __all__ = [
@@ -34,10 +38,12 @@ __all__ = [
     "ask_engine",
     "engine_version",
     "meets_floor",
+    "newer_engine_note",
 ]
 
-#: The checks this Bunker knows how to verify, as the contract names them.
-CHECKS = ("sha256", "md5-publisher", "etag-md5", "sha256-publisher")
+#: The checks this Bunker knows how to verify, as the contract names them:
+#: the keys of the table in :mod:`bunker.checks`.
+CHECKS = tuple(KINDS)
 SCHEMA_MAJOR = "hammunition/1"
 
 _FIELDS: dict[str, tuple[type, ...]] = {
@@ -79,6 +85,9 @@ class Deferred:
     unit: str
     name: str | None
     reason: str
+    refused: bool = False
+    """The Bunker refused it (a check kind it does not know), as opposed to the
+    engine having deferred it."""
 
 
 @dataclass(frozen=True)
@@ -88,6 +97,8 @@ class Listing:
     deferred: tuple[Deferred, ...]
     licences: Mapping[str, str]
     """Each unit's licence line, as the plan prints it."""
+    warnings: tuple[str, ...] = ()
+    """Notes that are not failures: the engine is newer than this Bunker knows."""
 
 
 def argv(cfg: Config) -> list[str]:
@@ -138,6 +149,24 @@ def _entry(item: Any, index: int) -> dict[str, Any]:
     return item
 
 
+def _key(version: str) -> tuple[int, ...] | None:
+    match = _VERSION.match(version)
+    return None if match is None else tuple(int(p) for p in match.groups())
+
+
+def newer_engine_note(version: str) -> str | None:
+    """A sentence when *version* is newer than the release this Bunker's check
+    table was written against (:data:`bunker.ENGINE_CONTRACT`), else None."""
+    got, known = _key(version), _key(ENGINE_CONTRACT)
+    if got is None or known is None or got <= known:
+        return None
+    return (
+        f"Hammunition {version} is newer than {ENGINE_CONTRACT}, the newest release whose "
+        f"artifacts document this Bunker knows. Any check kind it does not know is refused "
+        f"by name until you update the Bunker."
+    )
+
+
 def _parse(text: str) -> Listing:
     try:
         doc = json.loads(text)
@@ -183,8 +212,12 @@ def _parse(text: str) -> Listing:
                 Deferred(
                     unit,
                     name,
-                    f"its check {item['check']!r} is not one this Bunker verifies "
-                    f"({', '.join(CHECKS)}); update the Bunker",
+                    f"refused: its check {item['check']!r} is not one this Bunker knows "
+                    f"({', '.join(CHECKS)}); the engine is Hammunition "
+                    f"{doc.get('engine') or 'of an unknown version'}, this Bunker knows "
+                    f"the artifacts document through {ENGINE_CONTRACT}. Nothing was "
+                    f"downloaded for it; update the Bunker",
+                    refused=True,
                 )
             )
             continue
@@ -215,7 +248,9 @@ def _parse(text: str) -> Listing:
             continue
         seen[(unit, name)] = artifact
         artifacts.append(artifact)
+    note = newer_engine_note(str(doc.get("engine", "")))
     return Listing(
+        warnings=(note,) if note else (),
         engine_version=str(doc.get("engine", "")),
         artifacts=tuple(artifacts),
         deferred=tuple(deferred),

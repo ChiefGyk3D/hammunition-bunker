@@ -22,7 +22,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Any
 
-from bunker import __version__, config, envelope, index, run, schedule, server, verify
+from bunker import __version__, checks, config, envelope, index, run, schedule, server, verify
 from bunker.config import Config, ConfigError
 from bunker.doctor import doctor_path
 from bunker.index import IndexRefused
@@ -71,6 +71,17 @@ def _status_body(idx: index.Index) -> dict[str, Any]:
             if e.status != "current"
         ],
         "deferred": idx.deferred,
+        "unverified": [
+            {
+                "unit": e.unit,
+                "name": e.name,
+                "check": e.publisher_check,
+                "size": e.size,
+                "fetched": e.fetched,
+                "licence": e.licence,
+            }
+            for e in index.held_unverified(idx)
+        ],
     }
 
 
@@ -103,6 +114,11 @@ def cmd_status(args: argparse.Namespace, emit: Emit | None) -> int:
     for d in body["deferred"]:
         name = f"/{d['name']}" if d.get("name") else ""
         print(f"  deferred: {d['unit']}{name}: {d['reason']}")
+    if body["unverified"]:
+        print(f"{checks.UNVERIFIED_LABEL} ({len(body['unverified'])}):")
+        for u in body["unverified"]:
+            size = f"{u['size']} bytes" if u["size"] is not None else "size unknown"
+            print(f"  {u['unit']}/{u['name']}: {u['check']}, {size}, fetched {u['fetched']}")
     return EXIT_OK
 
 

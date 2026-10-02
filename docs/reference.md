@@ -21,7 +21,7 @@ then `./bunker.toml`) and, where it has a document, `--json`.
 | `bunker verify [--unit NAME]...` | re-hash every held file against its sidecar; nothing is fetched and the engine is not asked | `verify` |
 | `bunker serve` | the HTTP server, in the foreground | none |
 | `bunker schedule` | the server, plus a pass at start and one a day at `schedule.run_at`; the container's entry point | none |
-| `bunker doctor` | the config parses, the engine answers at or above the floor, the volume is writable, the port binds | `doctor` |
+| `bunker doctor` | the config parses, the engine answers at or above the floor (and is named when it is newer than the release this Bunker's table was written against), the volume is writable, which unverified artifacts are held and which way `hold_unverified` is set, the port binds | `doctor` |
 
 `--all` makes every artifact due whatever its cadence; a copy that already
 matches is re-hashed, not downloaded again. `--unit NAME` (repeatable)
@@ -38,7 +38,7 @@ volume locked is skipped, not queued.
 | Code | Meaning |
 |---|---|
 | 0 | clean |
-| 1 | the run or check found failures: a failed fetch, a corrupted file, an engine that could not be asked, a doctor check that failed |
+| 1 | the run or check found failures: a failed fetch, a corrupted file, an engine that could not be asked, **an artifact whose check kind this Bunker does not know (refused by name)**, a doctor check that failed |
 | 2 | refused: the configuration, the index (damaged, or newer than this Bunker), the arguments |
 | 125 | another run holds the volume's lock |
 
@@ -60,6 +60,7 @@ refused by name. Relative paths resolve against the file's own directory.
 | `selection.map_freshness` | `"yearly"` | `yearly`, `monthly` or `latest`, as the engine takes it |
 | `selection.reference_books` | `[]` | Kiwix book ids (`hammunition reference books` lists them; D-066). Books are the largest artifacts a Bunker can hold, so unlike `units`, none does not mean "everything": it defers `kiwix-library` as *no books selected*. Needs the Hammunition release that carries #178 (the next release after v0.18.0, until it is tagged) |
 | `selection.units` | `[]` | the units to keep; empty is everything the engine lists |
+| `selection.hold_unverified` | `true` | keep the artifacts whose check names no digest (`unverified-zip`: the ACMA register, which carries `client.csv`, licensees' names and addresses its licence bars passing on in a derivative). `true` is the maintainer's ruling of 2026-10-02: the Bunker is for users to download things and have their repository set up, and the engine never opens `client.csv`. `false` declines every such artifact by name, never fetches it, and withdraws a copy already held from the index and from serving (its files are left for you to delete) |
 | `storage.root` | `"/data"` | the volume |
 | `storage.keep_previous` | `true` | keep the last good copy beside the current one (one, never more) |
 | `storage.downloads` | `2` | downloads at a time, 1 to 4 |
@@ -89,15 +90,53 @@ not refresh": a missing artifact is fetched on any run.
 | deferred by the engine this time | kept as it was | — |
 
 "Matches" means: for a `sha256` or `sha256-publisher` check, the sidecar
-equals the engine's digest; for `md5-publisher` and `etag-md5`, the index
-records that this copy was verified against the same publisher digest, or,
-when it does not (an index moved aside), the file is hashed and compared.
-A listed size that disagrees with the file on disk is not a match.
+equals the engine's digest; for `md5-publisher`, `etag-md5` and
+`sha1-publisher`, the index records that this copy was verified against the
+same publisher digest, or, when it does not (an index moved aside), the file
+is hashed (MD5 or SHA-1) and compared. A listed size that disagrees with the
+file on disk is not a match. An `unverified-zip` has no digest to match, so a
+held copy is never `stale` and never "newer elsewhere": it is kept until its
+unit's cadence says to fetch it again (and is re-hashed against its sidecar
+on the verify cadence like any other).
 
-Downloads go through Hammunition's own `Fetcher`: `fetch` for a sha256,
-`fetch_md5` for a publisher MD5 with the listed size. A listed artifact with
-no digest, or an MD5 with no size, is failed by name and nothing is
-downloaded. Any failure the run did not foresee (a truncated body, a disk
+## Check kinds
+
+The engine names how each artifact is verified in its `check`. This table is
+`bunker.checks.KINDS`; `tests/test_docs.py` fails when this page or the
+README lacks a row for a kind in it, and `tests/test_kinds.py` fails when the
+installed engine can emit a kind that is not in it.
+
+| Check | Digest in `digest` | What is verified | Engine method | Size needed |
+|---|---|---|---|---|
+| `sha256` | sha256, pinned by Hammunition | the bytes, hashed as they arrive | `Fetcher.fetch` | no (a cap of the size plus 1 MiB when listed) |
+| `sha256-publisher` | sha256, served by the publisher | the same | `Fetcher.fetch` | no |
+| `md5-publisher` | MD5, Geofabrik's `.md5` | the MD5 and the exact size | `Fetcher.fetch_md5` | yes |
+| `etag-md5` | MD5, the Copernicus object's single-part ETag | the MD5 and the exact size | `Fetcher.fetch_md5` | yes |
+| `sha1-publisher` | SHA-1, from CoMaps' own map index at the pinned commit | the SHA-1 and the exact size (weaker than a pinned sha256) | `Fetcher.fetch_sha1` | yes |
+| `unverified-zip` | none (`digest` is null) | the zip's own CRC-32s and the tables the engine's reader needs (`hammunition.acma.check_register`); a damaged download, not an altered one | `Fetcher.fetch_checked` | no (the listed size is a `HEAD`'s; the file changes daily; the cap is the engine's `FETCH_LIMIT`) |
+
+An `unverified-zip` artifact is stored, its size and fetch date recorded in
+the index, fetched again on its unit's schedule, and listed by `bunker
+status`, the status page and `bunker doctor` under *Unverified, held by the
+maintainer's ruling* (`status --json`: `unverified`). `bunker verify` also
+runs the engine's structure check over a held copy, which catches a copy
+damaged before its sidecar was written; a sidecar's hash alone cannot.
+
+A **kind not in this table** is refused by name, with the engine's version
+(the document's `engine` field): the entry is not downloaded, appears in the
+run's `refused` list and in `deferred`, and the run exits 1. A document from
+an engine newer than `bunker.ENGINE_CONTRACT` (the newest release whose
+artifacts document this table was written against) adds a note to the run's
+`warnings` and to `bunker doctor`; that alone is not a failure.
+
+`sha1-publisher` and `unverified-zip` need an engine newer than the pinned
+floor (`ENGINE_FLOOR`, v0.16.0): the artifact fails by name when the installed
+engine lacks `Fetcher.fetch_sha1`, `Fetcher.fetch_checked` or
+`hammunition.acma`, and nothing is downloaded.
+
+Downloads go through Hammunition's own `Fetcher`, by the method in the table.
+A listed artifact whose kind needs a digest and has none, or whose kind needs
+a size and has none, is failed by name and nothing is downloaded. Any failure the run did not foresee (a truncated body, a disk
 error reading a held file) fails that artifact alone, with its type and
 message; the rest of the run and its report carry on. A publisher URL on
 plain HTTP is named in the report and on the status page. An artifact the
@@ -149,8 +188,8 @@ Each artifact:
 | `unit`, `name` | as the engine lists them; the mirror serves it at `<unit>/<name>` |
 | `path` | the current copy, relative to the volume; null when there is none |
 | `sha256`, `size` | of the current copy |
-| `publisher_check` | `sha256`, `md5-publisher`, `etag-md5` or `sha256-publisher` |
-| `publisher_digest` | the digest of that kind the current copy was verified against |
+| `publisher_check` | a kind from the [table above](#check-kinds) |
+| `publisher_digest` | the digest of that kind the current copy was verified against; null for `unverified-zip` |
 | `publisher_url` | where the engine fetches it |
 | `licence` | the unit's licence line |
 | `fetched`, `verified` | when it was last downloaded, and last re-hashed |
@@ -192,8 +231,8 @@ or changing one bumps the major. `tests/golden/` holds an example of each.
 
 | Kind | From | Fields |
 |---|---|---|
-| `run` | `bunker run` | `started`, `finished`, `engine_version`, `counts` (fetched, verified, unchanged, stale, failed, corrupted, deferred), `error`, `outcomes` (`unit`, `name`, `action`, `status`, `reason`, `corrupted`, `size`), `deferred`, `dropped`, `plain_http`, `exit_code` |
-| `status` | `bunker status` | `engine_version`, `generated`, `last_run`, `counts` (per status), `not_current` (`unit`, `name`, `status`, `reason`), `deferred` |
+| `run` | `bunker run` | `started`, `finished`, `engine_version`, `counts` (fetched, verified, unchanged, stale, failed, corrupted, deferred), `error`, `outcomes` (`unit`, `name`, `action`, `status`, `reason`, `corrupted`, `size`), `deferred`, `dropped`, `plain_http`, `refused` (`unit`, `name`, `reason`: a check kind this Bunker does not know), `declined` (the same shape: unverified artifacts left alone because `hold_unverified` is false), `warnings`, `exit_code` |
+| `status` | `bunker status` | `engine_version`, `generated`, `last_run`, `counts` (per status), `not_current` (`unit`, `name`, `status`, `reason`), `deferred`, `unverified` (`unit`, `name`, `check`, `size`, `fetched`, `licence`: what is held with no digest) |
 | `verify` | `bunker verify` | `started`, `finished`, `checked`, `corrupted`, `results` (`unit`, `name`, `path`, `ok`, `reason`), `exit_code` |
 | `doctor` | `bunker doctor` | `ok`, `checks` (`name`, `ok`, `detail`) |
 | `error` | any command that ended without its own document | `command`, `exit_code`, `message` (everything written to stderr) |
@@ -206,6 +245,7 @@ hammunition [--catalog DIR] artifacts --json --map-freshness F [--map-regions R,
 
 The answer must be one `artifacts` document with schema `hammunition/1`;
 anything else fails the run with what the engine said. An entry with a
-`check` this Bunker does not know is reported as deferred, not guessed at.
+`check` this Bunker does not know is refused by name with the engine's
+version (see [Check kinds](#check-kinds)), not guessed at.
 The contract is Hammunition's `ArtifactsDocument`, described in its
 [JSON interface reference](https://github.com/ChiefGyk3D/Hammunition/blob/main/docs/reference/json-interface.md).

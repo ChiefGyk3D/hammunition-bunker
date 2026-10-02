@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from bunker import cli, config
+from bunker import checks, cli, config
 
 ROOT = Path(__file__).resolve().parent.parent
 HAMMUNITION_README = ROOT.parent / "Hammunition" / "README.md"
@@ -95,3 +95,22 @@ def test_the_example_config_is_the_reference_config() -> None:
         key = re.match(r"^([a-z_]+) =", line)
         if key and "." not in table:
             assert f"`{table}.{key.group(1)}`" in reference()
+
+
+@pytest.mark.parametrize("kind", sorted(checks.KINDS))
+@pytest.mark.parametrize("page", ["README.md", "docs/reference.md"])
+def test_every_check_kind_is_in_the_kinds_table(kind: str, page: str) -> None:
+    """The table in the code (`bunker.checks.KINDS`) and the two tables a reader
+    sees must list the same kinds: a kind added to one and not the others is the
+    drift this catches."""
+    text = (ROOT / page).read_text(encoding="utf-8")
+    assert re.search(rf"^\| `{re.escape(kind)}` \|", text, re.MULTILINE), (
+        f"{page} has no row for the check kind `{kind}`"
+    )
+
+
+@pytest.mark.parametrize("page", ["README.md", "docs/reference.md", "docs/guide.md"])
+def test_the_ruling_and_the_switch_are_stated(page: str) -> None:
+    text = (ROOT / page).read_text(encoding="utf-8")
+    assert "2026-10-02" in text and "hold_unverified" in text
+    assert "client.csv" in text

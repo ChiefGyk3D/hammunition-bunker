@@ -28,14 +28,15 @@ import time as _time
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import IO, Any, cast
 
 from bunker import statuspage
+from bunker.checks import KINDS
 from bunker.config import Config
-from bunker.engine import Artifact, EngineError, Listing, ask_engine
+from bunker.engine import Artifact, Deferred, EngineError, Listing, ask_engine
 from bunker.enginelib import (
     DEFAULT_MAX_BYTES,
     BackendError,
@@ -44,6 +45,7 @@ from bunker.enginelib import (
     RemoteArtifact,
     Transport,
     UrllibTransport,
+    acma,
 )
 from bunker.index import Entry, Index
 from bunker.index import load as load_index
@@ -54,6 +56,7 @@ from bunker.volume import (
     artifact_dir,
     file_name,
     hash_file,
+    hash_file_with,
     install,
     read_sidecar,
     sidecar,
@@ -79,7 +82,6 @@ SLACK = timedelta(hours=1)
 #: ``auto`` verify: every run below this size, monthly at or above it.
 LARGE = 1024**3
 MIB = 1024 * 1024
-SHA_CHECKS = ("sha256", "sha256-publisher")
 
 Clock = Callable[[], datetime]
 
@@ -144,6 +146,13 @@ class RunReport:
     plain_http: list[str] = field(default_factory=list)
     """``unit/name`` of every artifact whose publisher URL is plain HTTP. The
     digest, not the transport, is the check; the spec asks that it be said."""
+    refused: list[dict[str, str | None]] = field(default_factory=list)
+    """Artifacts whose check kind this Bunker does not know: named, not
+    downloaded, and a failure of the run."""
+    declined: list[dict[str, str | None]] = field(default_factory=list)
+    """Unverified artifacts left alone because ``hold_unverified`` is false."""
+    warnings: list[str] = field(default_factory=list)
+    """Notes that are not failures, such as an engine newer than this Bunker knows."""
 
     def counts(self) -> dict[str, int]:
         count = dict.fromkeys(("fetched", "verified", "unchanged", "stale", "failed"), 0)
@@ -156,7 +165,7 @@ class RunReport:
     @property
     def exit_code(self) -> int:
         counts = self.counts()
-        return 1 if self.error or counts["failed"] or counts["corrupted"] else 0
+        return 1 if self.error or self.refused or counts["failed"] or counts["corrupted"] else 0
 
     def summary_lines(self) -> list[str]:
         c = self.counts()
@@ -167,6 +176,11 @@ class RunReport:
         ]
         if self.error:
             lines.append(f"  error: {self.error}")
+        lines += [f"  note: {w}" for w in self.warnings]
+        for r in self.refused:
+            lines.append(f"  refused: {r['unit']}/{r['name']}: {r['reason']}")
+        for d in self.declined:
+            lines.append(f"  declined: {d['unit']}/{d['name']}: {d['reason']}")
         for o in self.outcomes:
             if o.corrupted:
                 lines.append(f"  corrupted: {o.unit}/{o.name} (its bytes no longer matched)")
@@ -196,6 +210,9 @@ class RunReport:
             "deferred": self.deferred,
             "dropped": self.dropped,
             "plain_http": self.plain_http,
+            "refused": self.refused,
+            "declined": self.declined,
+            "warnings": self.warnings,
             "exit_code": self.exit_code,
         }
 
@@ -255,31 +272,48 @@ def _transport(cfg: Config, given: Transport | None) -> Transport:
 
 
 def _download(root: Path, artifact: Artifact, transport: Transport) -> FetchResult:
-    """The engine's verified fetch, into ``.incoming/<unit>/``."""
-    if artifact.digest is None:
+    """The engine's verified fetch, into ``.incoming/<unit>/``, by the method
+    the table in :mod:`bunker.checks` names for the artifact's check."""
+    kind = KINDS[artifact.check]
+    if kind.needs_digest and artifact.digest is None:
         raise BackendError(
-            f"the engine listed no digest for {artifact.url}; nothing unverified is kept"
+            f"the engine listed no digest for {artifact.url}; nothing unverified is kept "
+            f"under a {artifact.check} check"
+        )
+    if kind.needs_size and artifact.size is None:
+        raise BackendError(
+            f"the engine listed no size for {artifact.url}; an {artifact.check} "
+            f"download is only checked with its size"
         )
     fetcher = Fetcher(cache_dir=root / ".incoming" / artifact.unit, transport=transport)
-    if artifact.check in SHA_CHECKS:
-        cap = artifact.size + MIB if artifact.size is not None else DEFAULT_MAX_BYTES
-        result = fetcher.fetch(
-            RemoteArtifact(url=artifact.url, sha256=artifact.digest), max_bytes=cap
+    method = getattr(fetcher, kind.method, None)
+    if method is None:
+        raise BackendError(
+            f"the installed Hammunition has no Fetcher.{kind.method}, which the "
+            f"{artifact.check} check needs; install the Hammunition release that carries it"
         )
-    else:
-        if artifact.size is None:
-            raise BackendError(
-                f"the engine listed no size for {artifact.url}; an {artifact.check} "
-                f"download is only checked with its size"
-            )
-        result = fetcher.fetch_md5(artifact.url, artifact.digest, expected_size=artifact.size)
+    digest = artifact.digest
+    if kind.method == "fetch" and digest is not None:
+        cap = artifact.size + MIB if artifact.size is not None else DEFAULT_MAX_BYTES
+        result = method(RemoteArtifact(url=artifact.url, sha256=digest), max_bytes=cap)
+    elif kind.method == "fetch_checked":
+        # No digest exists: the engine's own check of the register's structure
+        # (the zip's CRC-32s and the tables its reader needs) is the whole of it,
+        # and the file changes daily, so the listed size is a HEAD's, not a pin.
+        reader = acma()
+        result = method(artifact.url, max_bytes=reader.FETCH_LIMIT, check=reader.check_register)
+        return cast(FetchResult, result)
+    elif digest is not None and artifact.size is not None:
+        result = method(artifact.url, digest, expected_size=artifact.size)
+    else:  # pragma: no cover - the digest and size checks above make this unreachable
+        raise BackendError(f"{artifact.url}: no way to check a {artifact.check} download")
     if artifact.size is not None and result.size != artifact.size:
         result.path.unlink(missing_ok=True)
         raise BackendError(
             f"{artifact.url}: the engine listed {artifact.size} bytes and {result.size} "
             f"arrived; the digest matched, so the listing is wrong"
         )
-    return result
+    return cast(FetchResult, result)
 
 
 class _Pass:
@@ -350,8 +384,11 @@ class _Pass:
         if artifact.size is not None and held.stat().st_size != artifact.size:
             return False, False
         claimed = read_sidecar(held)
-        if artifact.check in SHA_CHECKS:
+        algorithm = KINDS[artifact.check].algorithm
+        if algorithm == "sha256":
             return claimed == artifact.digest, False
+        if algorithm is None:  # pragma: no cover - only an unverified kind has none
+            return False, False
         rel = held.relative_to(self.root).as_posix()
         if (
             claimed is not None
@@ -361,8 +398,8 @@ class _Pass:
         ):
             return True, False
         # No record says what this copy was checked against: hash it now.
-        sha256, md5 = hash_file(held)
-        if md5 != artifact.digest or (claimed is not None and claimed != sha256):
+        sha256, other = hash_file_with(held, algorithm)
+        if other != artifact.digest or (claimed is not None and claimed != sha256):
             return False, True
         if claimed is None:
             write_sidecar(held, sha256)
@@ -396,7 +433,14 @@ class _Pass:
         held = self._held(entry, folder, basename)
         corrupted = False
         if held is not None:
-            matches, hashed = self._matches(artifact, entry, held)
+            if KINDS[artifact.check].unverified:
+                # No digest exists to compare, so a held copy is never "newer
+                # elsewhere" or "stale": it is kept until the schedule says to
+                # fetch it again, and its bytes are re-hashed against the
+                # sidecar like any other.
+                matches, hashed = not self._fetch_due(artifact, entry), False
+            else:
+                matches, hashed = self._matches(artifact, entry, held)
             if matches:
                 cadence = self.cfg.schedule.verify_cadence(artifact.unit)
                 size = held.stat().st_size
@@ -523,8 +567,43 @@ def sweep_incoming(root: Path) -> list[Path]:
     return removed
 
 
+def _deferred_of(items: Sequence[Deferred]) -> list[dict[str, str | None]]:
+    return [{"unit": d.unit, "name": d.name, "reason": d.reason} for d in items]
+
+
 def _deferred(listing: Listing) -> list[dict[str, str | None]]:
-    return [{"unit": d.unit, "name": d.name, "reason": d.reason} for d in listing.deferred]
+    return _deferred_of(listing.deferred)
+
+
+def _is_refused(listing: Listing, item: Mapping[str, str | None]) -> bool:
+    return any(
+        d.refused and (d.unit, d.name, d.reason) == (item["unit"], item["name"], item["reason"])
+        for d in listing.deferred
+    )
+
+
+def _hold_policy(cfg: Config, listing: Listing) -> tuple[Listing, list[Deferred]]:
+    """With ``hold_unverified`` false, the artifacts whose check names no digest
+    leave the listing and come back as declined. They are not deferred by the
+    engine, so :func:`_drop` withdraws one already held."""
+    if cfg.selection.hold_unverified:
+        return listing, []
+    kept: list[Artifact] = []
+    declined: list[Deferred] = []
+    for a in listing.artifacts:
+        if KINDS[a.check].unverified:
+            declined.append(
+                Deferred(
+                    a.unit,
+                    a.name,
+                    f"declined: its check is {a.check}, which names no digest, and "
+                    f"[selection] hold_unverified = false (true, the default, holds it "
+                    f"by the maintainer's ruling of 2026-10-02)",
+                )
+            )
+        else:
+            kept.append(a)
+    return replace(listing, artifacts=tuple(kept)), declined
 
 
 def _drop(idx: Index, listing: Listing, named: Sequence[str]) -> list[dict[str, str | None]]:
@@ -601,10 +680,15 @@ def run(
         except EngineError as exc:
             report.error = str(exc)
             return _finish(cfg, idx, report, clock)
+        got, declined = _hold_policy(cfg, got)
         report.engine_version = idx.engine_version = got.engine_version or None
-        report.deferred = idx.deferred = _deferred(got)
+        report.warnings = list(got.warnings)
+        report.refused = [d for d in _deferred(got) if _is_refused(got, d)]
+        report.declined = _deferred_of(declined)
+        report.deferred = idx.deferred = _deferred(got) + report.declined
 
         known = {a.unit for a in got.artifacts} | {d.unit for d in got.deferred}
+        known |= {d.unit for d in declined}
         unknown = [u for u in units if u not in known]
         if unknown:
             report.error = (

@@ -46,6 +46,7 @@ __all__ = [
     "disk_used",
     "file_name",
     "hash_file",
+    "hash_file_with",
     "install",
     "read_sidecar",
     "sidecar",
@@ -97,15 +98,21 @@ def file_name(url: str) -> str:
     return safe_name(url)
 
 
-def hash_file(path: Path) -> tuple[str, str]:
-    """``(sha256, md5)`` of *path*, in one read."""
+def hash_file_with(path: Path, algorithm: str) -> tuple[str, str]:
+    """``(sha256, <algorithm>)`` of *path*, in one read: the sidecar's digest
+    and the one the engine's publisher check names (``md5`` or ``sha1``)."""
     sha = hashlib.sha256()
-    md5 = hashlib.md5(usedforsecurity=False)
+    other = hashlib.new(algorithm, usedforsecurity=False)
     with path.open("rb") as handle:
         while chunk := handle.read(_CHUNK):
             sha.update(chunk)
-            md5.update(chunk)
-    return sha.hexdigest(), md5.hexdigest()
+            other.update(chunk)
+    return sha.hexdigest(), other.hexdigest()
+
+
+def hash_file(path: Path) -> tuple[str, str]:
+    """``(sha256, md5)`` of *path*, in one read."""
+    return hash_file_with(path, "md5")
 
 
 def sidecar(path: Path) -> Path:

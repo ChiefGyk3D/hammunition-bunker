@@ -12,6 +12,28 @@ Notable changes, newest first. Versions follow
 
 ### Added
 
+- Every check kind the engine's `artifacts` document can emit, in one table
+  (`src/bunker/checks.py`, tested against the engine's own list and against
+  the README and the reference): `sha256`, `sha256-publisher`,
+  `md5-publisher`, `etag-md5`, `sha1-publisher` (CoMaps; `Fetcher.fetch_sha1`)
+  and `unverified-zip` (the ACMA register; `Fetcher.fetch_checked` with the
+  engine's own `hammunition.acma.check_register`). Before this, `sha1-publisher`
+  and the register were deferred as unknown.
+- Unverified artifacts, held by the maintainer's ruling of 2026-10-02 (D-070,
+  D-074's ACMA amendment): the register is stored with its size and fetch
+  date, fetched again on its unit's schedule, never marked stale, CRC-checked
+  by the engine's check on every fetch and by `bunker verify`, and listed by
+  `bunker status` (`unverified` in its document), the status page and `bunker
+  doctor` under *Unverified, held by the maintainer's ruling*.
+- `selection.hold_unverified` (default `true`): `false` declines every
+  unverified artifact by name, never fetches it and withdraws a copy already
+  held from the index. `bunker doctor` names the unverified artifacts held and
+  the switch's setting (a new `unverified` check).
+- `bunker.ENGINE_CONTRACT`: when the engine's `artifacts` document is newer
+  than the release this Bunker's table was written against, the run
+  (`warnings`) and `bunker doctor` say so.
+- The `run` document gains `refused`, `declined` and `warnings`; the `status`
+  document gains `unverified`.
 - `selection.reference_books` in `bunker.toml`: Kiwix book ids, passed to
   the engine as `--reference-books` when non-empty (Hammunition #178). Each
   selected book is a plain `sha256` artifact (`unit: kiwix-library`) and
@@ -20,6 +42,12 @@ Notable changes, newest first. Versions follow
   largest artifacts a Bunker can hold, so the default stays empty. Needs
   the Hammunition release that carries #178 (the next release after
   v0.18.0, until it is tagged).
+
+### Changed
+
+- A check kind this Bunker does not know is **refused by name**, with the
+  engine's version, and fails the run (exit 1). It was deferred quietly
+  before; the rest of the listing is still mirrored.
 
 ## [0.1.0] — unreleased
 

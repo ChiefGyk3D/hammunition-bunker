@@ -22,6 +22,7 @@ from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
+from bunker.checks import is_unverified
 from bunker.volume import write_atomic
 
 __all__ = [
@@ -33,6 +34,7 @@ __all__ = [
     "Index",
     "IndexRefused",
     "ensure",
+    "held_unverified",
     "load",
     "save",
 ]
@@ -66,7 +68,7 @@ class Entry:
     """sha256 of the current copy's bytes (the sidecar's claim when written)."""
     size: int | None
     publisher_check: str
-    """How the engine verifies it: sha256, md5-publisher, etag-md5, sha256-publisher."""
+    """How the engine verifies it: a kind from the table in :mod:`bunker.checks`."""
     publisher_digest: str | None
     """The digest of that kind the current copy was verified against."""
     publisher_url: str
@@ -180,6 +182,13 @@ def save(root: Path, index: Index, *, generated: str) -> None:
     root.mkdir(parents=True, exist_ok=True)
     text = json.dumps(body, indent=2, ensure_ascii=False) + "\n"
     write_atomic(root / FILE, text.encode("utf-8"))
+
+
+def held_unverified(index: Index) -> list[Entry]:
+    """The artifacts on the volume whose check names no digest (``unverified-zip``),
+    in index order: what ``status``, the status page and ``doctor`` list under
+    the maintainer's ruling."""
+    return [e for e in index.artifacts if e.path is not None and is_unverified(e.publisher_check)]
 
 
 def ensure(root: Path, *, generated: str) -> None:

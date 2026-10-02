@@ -30,7 +30,9 @@ disagree, the reference is describing a recorded ruling or is a bug.
   cadence.
 - **The server serves an allow-list** built from the index. Never add a
   route that serves the volume by prefix.
-- **Nothing downloaded is executed, unpacked or parsed** beyond hashing.
+- **Nothing downloaded is executed, unpacked or parsed** beyond hashing, bar
+  the engine's own structure check of an `unverified-zip` (CRCs and headers,
+  read in place; `bunker.checks` is the one table of kinds).
 - **Deleting is for a person.** Entries the engine stops listing are dropped
   from the index; their files stay until someone removes them.
 
