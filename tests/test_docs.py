@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from bunker import checks, cli, config
+from bunker import checks, cli, config, engine
 
 ROOT = Path(__file__).resolve().parent.parent
 HAMMUNITION_README = ROOT.parent / "Hammunition" / "README.md"
@@ -76,6 +76,41 @@ def test_every_config_key_is_documented(key: str) -> None:
 @pytest.mark.parametrize("command", sorted(cli.COMMANDS))
 def test_every_command_is_documented(command: str) -> None:
     assert f"`bunker {command}" in reference()
+
+
+def test_engine_argv_matches_reference(tmp_path: Path) -> None:
+    path = tmp_path / "bunker.toml"
+    path.write_text(
+        f'[engine]\ncatalog = "{tmp_path}"\n'
+        '[selection]\nmap_regions = ["region-one"]\nmap_freshness = "monthly"\n'
+        'reference_books = ["book-one"]\nunits = ["unit-one"]\n',
+        encoding="utf-8",
+    )
+    placeholders = {
+        "--catalog": ("DIR", True),
+        "--map-freshness": ("F", False),
+        "--map-regions": ("R,...", True),
+        "--reference-books": ("ID,...", True),
+        "--units": ("U,...", True),
+    }
+    actual = engine.argv(config.load(path))
+    documented_argv: list[str] = []
+    index = 0
+    while index < len(actual):
+        token = actual[index]
+        if token in placeholders:
+            placeholder, optional = placeholders[token]
+            item = f"{token} {placeholder}"
+            documented_argv.append(f"[{item}]" if optional else item)
+            index += 2
+        else:
+            documented_argv.append(token)
+            index += 1
+
+    section = reference().split("## What the Bunker asks the engine", 1)[1]
+    command = re.search(r"```\n(.*?)\n```", section, re.DOTALL)
+    assert command is not None
+    assert command.group(1) == " ".join(documented_argv)
 
 
 @pytest.mark.parametrize("kind", sorted(p.stem for p in (ROOT / "tests" / "golden").glob("*.json")))
