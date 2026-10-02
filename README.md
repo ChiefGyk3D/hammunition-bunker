@@ -50,6 +50,58 @@ A container that does three things on one volume:
 | Talks | `hammunition artifacts --json` | HTTP on the LAN, read-only |
 | Trusts | the hash in the catalog | nothing; re-hashes what it holds |
 
+## Every check kind the engine emits
+
+Each entry of the engine's `artifacts` document names how its download is
+verified (`check`). The Bunker keeps one table of them in code
+(`src/bunker/checks.py`, tested against the engine's own list and against
+this page) and verifies each exactly as the engine does, through the
+engine's own `Fetcher`. A kind that is not in the table is **refused by
+name**, with the engine's version, and fails the run: nothing is downloaded
+for it and nothing is skipped quietly.
+
+| Check | What is verified | Engine method |
+|---|---|---|
+| `sha256` | the sha256 Hammunition pins | `Fetcher.fetch` |
+| `sha256-publisher` | a sha256 the publisher serves (no unit produces it today) | `Fetcher.fetch` |
+| `md5-publisher` | Geofabrik's published MD5 and the exact size the engine listed | `Fetcher.fetch_md5` |
+| `etag-md5` | the Copernicus object's single-part ETag (its MD5) and the exact size | `Fetcher.fetch_md5` |
+| `sha1-publisher` | the SHA-1 and size in CoMaps' own map index at the pinned commit (the engine calls this weaker than a pinned sha256) | `Fetcher.fetch_sha1` |
+| `unverified-zip` | **no digest exists**: the zip's own CRC-32s and the tables the engine's reader needs, by the engine's own check | `Fetcher.fetch_checked` |
+
+Whatever the check, every file gets a sha256 sidecar of its bytes, so the
+volume is re-hashed one way. `sha1-publisher` and `unverified-zip` need an
+engine newer than the pinned `v0.16.0`; on one that lacks the method the
+artifact fails by name, saying which method is missing, and nothing is
+downloaded. An engine newer than the release this Bunker's table was written
+against is named in the run and by `bunker doctor`.
+
+### Unverified artifacts, held by the maintainer's ruling
+
+`unverified-zip` is the Australian Communications and Media Authority's
+radiocommunications register (`acma-register/spectra_rrl.zip`, about 68 MB).
+The ACMA publishes no checksum and rebuilds the file daily, so nothing can be
+pinned: the only check is that the zip is whole and holds the tables the
+engine's reader needs, which catches a damaged download and not an altered
+one. The Bunker stores it, records its size and the date it was fetched,
+fetches it again on its unit's schedule, runs the engine's structure check
+(the zip's CRCs) on every fetch and on `bunker verify`, and `bunker status`,
+the status page and `bunker doctor` list it under *Unverified, held by the
+maintainer's ruling*.
+
+The register's `client.csv` carries licensees' names and addresses, which the
+register's licence bars passing on in a derivative. **Ruling, 2026-10-02:**
+a Bunker may hold the file anyway, because the Bunker is for users to download
+things and have their repository set up; the engine never opens `client.csv`.
+Keep this mirror on your LAN, as you must anyway.
+
+If you do not want client data on your NAS, set `hold_unverified = false`
+under `[selection]` in `bunker.toml` (default `true`). The register is then
+declined by name in every run, never fetched, and a copy already on the
+volume is withdrawn from the index and from serving, but **its file stays on
+the NAS until you delete it yourself** (the Bunker never deletes). `bunker doctor` says which unverified artifacts are held and
+which way the switch is set.
+
 ## What this is not
 
 - **Not a public mirror.** It serves without authentication because every
@@ -58,7 +110,9 @@ A container that does three things on one volume:
 - **Not a second source of truth.** The pins live in Hammunition's catalog.
 - **Not an apt mirror.** Packages come from your distribution; this holds data.
 - **Not something that runs what it downloads.** Nothing is unpacked,
-  converted or executed. Files are hashed and served, and that is all.
+  converted or executed. Files are hashed and served, and that is all; the one
+  exception is the engine's own structure check of an unverified zip, which
+  reads its headers and CRCs in place and writes nothing.
 - **Not a push service.** The laptop pulls; nothing is copied to it.
 
 ---

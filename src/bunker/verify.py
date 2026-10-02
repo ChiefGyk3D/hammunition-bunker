@@ -14,10 +14,13 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from bunker import statuspage
+from bunker.checks import KINDS
 from bunker.config import Config
+from bunker.enginelib import BackendError, acma
 from bunker.index import load as load_index
 from bunker.index import save as save_index
 from bunker.run import iso, sweep_incoming
@@ -62,6 +65,22 @@ class VerifyReport:
         return lines
 
 
+def _structure(check: str, path: Path) -> str | None:
+    """For a check with no digest, the engine's own structure check over the
+    held bytes (the zip's CRC-32s and tables), which the sidecar's hash cannot
+    do: a copy damaged *before* its sidecar was written still matches it."""
+    kind = KINDS.get(check)
+    if kind is None or not kind.unverified:
+        return None
+    try:
+        acma().check_register(path)
+    except BackendError:
+        raise
+    except Exception as exc:
+        return f"it fails the engine's structure check: {exc}"
+    return None
+
+
 def verify(
     cfg: Config, *, units: Sequence[str] = (), now: Callable[[], datetime] | None = None
 ) -> VerifyReport:
@@ -78,6 +97,7 @@ def verify(
             if entry.path is None:
                 continue
             path = root / entry.path
+            reason: str | None
             if not path.is_file():
                 reason = f"the file is missing ({entry.path})"
             else:
@@ -88,7 +108,15 @@ def verify(
                 elif sha256 != claimed:
                     reason = f"its bytes no longer match its sidecar (sha256 {sha256[:12]}…)"
                 else:
-                    reason = None
+                    try:
+                        reason = _structure(entry.publisher_check, path)
+                    except BackendError as exc:
+                        # The engine cannot run the check: not damage, so the
+                        # entry is left as it was and the result says why.
+                        report.results.append(
+                            Result(entry.unit, entry.name, entry.path, False, f"not checked: {exc}")
+                        )
+                        continue
             if reason is None:
                 entry.verified = report.started
                 report.results.append(Result(entry.unit, entry.name, entry.path, True))

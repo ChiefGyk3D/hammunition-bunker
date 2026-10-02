@@ -17,7 +17,8 @@ from html import escape
 from pathlib import Path
 
 from bunker import __version__
-from bunker.index import STATUSES, Index
+from bunker.checks import UNVERIFIED_LABEL
+from bunker.index import STATUSES, Index, held_unverified
 from bunker.volume import disk_used, write_atomic
 
 __all__ = ["human_size", "render", "write"]
@@ -131,6 +132,28 @@ def render(index: Index, *, disk_used: int) -> str:
         out.append("</tbody></table></div>")
     else:
         out.append('<p class="ok">Everything held is current.</p>')
+
+    unverified = held_unverified(index)
+    if unverified:
+        out.append(
+            f"<h2>{_e(UNVERIFIED_LABEL)}</h2><p>No digest exists for these: the publisher "
+            f"offers none and the file changes. Only the file's own structure was checked "
+            f"(a damaged download is caught, an altered one is not). They are held because "
+            f"the maintainer ruled, on 2026-10-02, that a Bunker may keep them for users to "
+            f"download. The ACMA register includes licensees' names and addresses "
+            f"(<code>client.csv</code>), which its licence bars passing on in a derivative: "
+            f"keep this mirror on your LAN. Turn it off with "
+            f"<code>[selection] hold_unverified = false</code>.</p>"
+            '<div class="wrap"><table><thead><tr><th>Artifact</th><th>Check</th><th>Size</th>'
+            "<th>Fetched</th></tr></thead><tbody>"
+        )
+        for e in unverified:
+            size = human_size(e.size) if e.size is not None else "unknown"
+            out.append(
+                f"<tr><td><code>{_e(e.unit)}/{_e(e.name)}</code></td>"
+                f"<td>{_e(e.publisher_check)}</td><td>{size}</td><td>{_e(e.fetched)}</td></tr>"
+            )
+        out.append("</tbody></table></div>")
 
     if index.deferred:
         out.append("<h2>Deferred by the engine</h2><ul>")

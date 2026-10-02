@@ -51,5 +51,8 @@
     "osm-regions/north-america/us/vermont",
     "dem-copernicus/Copernicus_DSM_COG_10_N44_00_W073_00_DEM"
   ],
+  "refused": [],
+  "declined": [],
+  "warnings": [],
   "exit_code": 0
 }

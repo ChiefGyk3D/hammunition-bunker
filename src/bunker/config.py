@@ -50,7 +50,7 @@ DEFAULT_PATHS = (Path("/etc/bunker/bunker.toml"), Path("bunker.toml"))
 
 _KNOWN: dict[str, tuple[str, ...]] = {
     "engine": ("command", "catalog", "timeout"),
-    "selection": ("map_regions", "map_freshness", "reference_books", "units"),
+    "selection": ("map_regions", "map_freshness", "reference_books", "units", "hold_unverified"),
     "storage": ("root", "keep_previous", "downloads", "max_rate"),
     "schedule": ("default", "run_at", "units"),
     "verify": ("default", "units"),
@@ -84,6 +84,14 @@ class Selection:
     Bunker can hold, so none is fetched without being named."""
     units: tuple[str, ...] = ()
     """Empty: everything ``hammunition artifacts`` lists for the selection."""
+    hold_unverified: bool = True
+    """Keep the artifacts whose check names no digest (``unverified-zip``: the
+    ACMA register, D-074). True by the maintainer's ruling of 2026-10-02: the
+    register's ``client.csv`` carries licensees' names and addresses, which its
+    licence bars passing on in a derivative; the Bunker is for users to
+    download things and have their repository set up, and the engine never
+    opens ``client.csv``. False declines every such artifact by name and
+    withdraws one already held."""
 
 
 @dataclass(frozen=True)
@@ -179,6 +187,13 @@ def _strings(table: Mapping[str, Any], name: str, key: str) -> tuple[str, ...]:
     if not isinstance(value, list) or not all(isinstance(v, str) and v.strip() for v in value):
         raise ConfigError(f"{name}.{key} must be a list of non-empty strings")
     return tuple(v.strip() for v in value)
+
+
+def _boolean(table: Mapping[str, Any], name: str, key: str, default: bool) -> bool:
+    value = table.get(key, default)
+    if not isinstance(value, bool):
+        raise ConfigError(f"{name}.{key} must be true or false")
+    return value
 
 
 def _cadences(value: Any, key: str, choices: Sequence[str]) -> dict[str, str]:
@@ -281,6 +296,7 @@ def load(path: Path) -> Config:
             ),
             reference_books=_strings(selection, "selection", "reference_books"),
             units=_strings(selection, "selection", "units"),
+            hold_unverified=_boolean(selection, "selection", "hold_unverified", True),
         ),
         storage=_storage(_table(data, "storage"), base),
         schedule=Schedule(

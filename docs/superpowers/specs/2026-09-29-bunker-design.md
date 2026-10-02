@@ -74,7 +74,7 @@ document) carries, per artifact:
 | `unit` | the manifest name (`osm-regions`, `dem-copernicus`, `kiwix-library`, ...) |
 | `name` | the artifact's stable name within the unit (region path, tile name, book name) |
 | `url` | the publisher URL the engine itself would fetch |
-| `check` | `sha256` (pinned by Hammunition), `md5-publisher` (Geofabrik's published MD5, fetched at plan time), `etag-md5` (Copernicus object metadata), or `sha256-publisher` (a `.meta4`/`.sha256` the engine reads) |
+| `check` | `sha256` (pinned by Hammunition), `md5-publisher` (Geofabrik's published MD5, fetched at plan time), `etag-md5` (Copernicus object metadata), `sha1-publisher` (the SHA-1 and size in CoMaps' own index), `sha256-publisher` (a `.meta4`/`.sha256` the engine reads; no unit produces it today) or `unverified-zip` (the ACMA register: no digest exists). The Bunker's table of them is `src/bunker/checks.py`; see "Check kinds" below |
 | `digest` | always a hex digest, or null until the publisher's checksum has been read (D-070 as built: the field is never a URL) |
 | `checksum_url` | where the publisher's checksum comes from when `check` is not `sha256`: the `.md5` URL, or the object URL whose HEAD carries the ETag |
 | `size` | bytes, when known before the fetch |
@@ -185,6 +185,46 @@ exits 125 with a line saying a run is in progress. Downloads within a run:
 two at a time by default, configurable, never more than four. Bandwidth cap
 optional (`[storage] max_rate = "20M"`), passed to the engine's transport.
 
+### Check kinds, as built (2026-10-02)
+
+The Bunker keeps one table of the check kinds (`src/bunker/checks.py`); the
+document parser, the run, `verify`, `status`, `doctor` and the docs test read
+it, and `tests/test_kinds.py` fails when the installed engine can emit a kind
+that is not in it.
+
+| Check | Verified by | Engine method |
+|---|---|---|
+| `sha256`, `sha256-publisher` | the sha256 (pinned, or the publisher's) | `Fetcher.fetch` |
+| `md5-publisher`, `etag-md5` | the MD5 and the exact listed size | `Fetcher.fetch_md5` |
+| `sha1-publisher` | the SHA-1 and the exact listed size | `Fetcher.fetch_sha1` |
+| `unverified-zip` | no digest: the engine's structure check (zip CRC-32s, the tables its reader needs) | `Fetcher.fetch_checked` |
+
+- **An unknown kind is refused by name**, with the engine's version (the
+  document's `engine` field): not downloaded, listed under the run's
+  `refused`, exit 1. The rest of the listing is still mirrored. An engine newer
+  than `ENGINE_CONTRACT` (the newest release whose document the table was
+  written against) adds a note to the run's `warnings` and to `doctor`; that is
+  not a failure. `ENGINE_CONTRACT` is not the image's pin (`ENGINE_FLOOR`).
+- **Methods the pinned engine lacks.** `sha1-publisher` and `unverified-zip`
+  need `Fetcher.fetch_sha1`, `Fetcher.fetch_checked` and `hammunition.acma`,
+  which the floor release (v0.16.0) does not have. The artifact fails by name
+  saying which is missing; nothing is downloaded. The Bunker still starts on the
+  floor because `hammunition.acma` is imported when needed.
+- **Unverified artifacts, held by the maintainer's ruling (2026-10-02).** The
+  ACMA register contains `client.csv` (licensees' names and addresses, which
+  its licence bars passing on in a derivative); the ruling is that a Bunker may
+  hold it anyway, "for users to download things and have their repository set
+  up", and the engine never opens `client.csv`. The Bunker stores the file,
+  records its size and fetch date, fetches it again when its unit's schedule is
+  due, never marks it `stale` (no digest to compare), runs the engine's
+  structure check on every fetch and on `bunker verify` (a damaged copy is
+  discarded, the last good one keeps serving), and lists it under *Unverified,
+  held by the maintainer's ruling* in `status`, the status page and `doctor`.
+- **`[selection] hold_unverified`** (default `true`): `false` declines every
+  such artifact by name, never fetches it, and withdraws one already held from
+  the index (files left for the operator to delete). `doctor` names what is held
+  and the switch's setting.
+
 ### The index
 
 `index.json` is the Bunker's document, versioned, one per volume:
@@ -202,7 +242,7 @@ optional (`[storage] max_rate = "20M"`), passed to the engine's transport.
       "path": "osm-regions/north-america/us/vermont-latest.osm.pbf",
       "sha256": "…",
       "size": 123456789,
-      "publisher_check": "md5-publisher",
+      "publisher_check": "md5-publisher",   // any kind in the table above; unverified-zip has no digest
       "publisher_url": "https://download.geofabrik.de/…",
       "fetched": "2026-09-22T03:10:41Z",
       "verified": "2026-09-29T03:00:12Z",

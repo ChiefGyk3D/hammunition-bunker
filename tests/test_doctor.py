@@ -35,7 +35,7 @@ def by_name(report: doctor.DoctorReport) -> dict[str, doctor.Check]:
 def test_all_good(tmp_path: Path, fake_engine: FakeEngine) -> None:
     report = doctor.doctor(cfg(tmp_path, free_port()))
     assert report.ok, report.checks
-    assert set(by_name(report)) == {"config", "engine", "volume", "port"}
+    assert set(by_name(report)) == {"config", "engine", "volume", "unverified", "port"}
     assert "0.16.0" in by_name(report)["engine"].detail
 
 

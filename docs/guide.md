@@ -153,9 +153,11 @@ systemd user unit of your own.
 docker exec hammunition-bunker bunker doctor
 ```
 
-(or `podman exec`). Doctor checks four things and says what it found: the
-config parses, the engine answers at or above the version this Bunker needs,
-the volume is writable, and the port binds or a Bunker already serves on it.
+(or `podman exec`). Doctor checks five things and says what it found: the
+config parses, the engine answers at or above the version this Bunker needs
+(and says when it is newer than the release this Bunker's check table was
+written against), the volume is writable, which unverified artifacts are held
+(below), and the port binds or a Bunker already serves on it.
 
 Then open `http://<nas-address>:8080/` in a browser.
 
@@ -194,6 +196,9 @@ Bunker saves the download, not the question.
   fetched yet. *Failed* means the last fetch failed; the last good copy, if
   there is one, is still served. *Corrupted* means the bytes on disk no
   longer match their sidecar; the copy is withdrawn and fetched again.
+- **Unverified, held by the maintainer's ruling**: the artifacts no digest
+  exists for (today the ACMA register), with size and date fetched; see
+  "The ACMA register" below.
 - **Deferred by the engine**: what the engine could not list for this
   selection, and why (a region Geofabrik did not answer for, a unit that
   needs a selection you did not give).
@@ -205,7 +210,39 @@ Bunker saves the download, not the question.
 [the reference](reference.md#the-index) describes it.
 `bunker status` prints the same summary in a terminal.
 
-## 6. Check a file by hand
+## 6. The ACMA register, and `hold_unverified`
+
+The engine can list the Australian ACMA register of radiocommunications
+licences (`acma-register/spectra_rrl.zip`, check `unverified-zip`). The ACMA
+publishes no checksum and rebuilds the file daily, so no digest exists: the
+only check is the engine's own structure check (the zip is whole, its tables
+and columns are the ones the reader needs, every member's CRC-32 matches).
+That catches a damaged download, not an altered one, and the status page and
+`bunker status` say so under *Unverified, held by the maintainer's ruling*.
+
+The register includes `client.csv`, licensees' names and addresses, which
+its licence bars passing on in a derivative. The maintainer's ruling of
+2026-10-02 is that a Bunker may hold the file anyway, because the Bunker is
+for users to download things and have their repository set up; the engine
+never opens `client.csv`. It is the one thing on the volume that is personal
+data about third parties, so the LAN-only rule matters most here.
+
+To keep it off the NAS, set this in `bunker.toml` and restart (or wait for
+the next scheduled pass, which re-reads the file):
+
+```
+[selection]
+hold_unverified = false
+```
+
+The next run declines the register by name (`declined:` in the run summary
+and under *Deferred* on the status page), never fetches it, and withdraws a
+copy already held from the index and from serving; **the file, with its
+`client.csv`, stays on disk until you delete it yourself.** `bunker doctor` prints which unverified artifacts are held
+and which way the switch is set. `bunker verify` runs the zip's CRC pass over
+a held register as well as re-hashing it.
+
+## 7. Check a file by hand
 
 Every file sits beside a sidecar holding its sha256, in the format
 `sha256sum -c` reads. On the NAS:

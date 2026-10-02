@@ -19,8 +19,8 @@ from typing import Any
 
 from bunker import ENGINE_FLOOR
 from bunker.config import Config, ConfigError, load
-from bunker.engine import EngineError, engine_version, meets_floor
-from bunker.index import IndexRefused
+from bunker.engine import EngineError, engine_version, meets_floor, newer_engine_note
+from bunker.index import IndexRefused, held_unverified
 from bunker.index import load as load_index
 
 __all__ = ["Check", "DoctorReport", "doctor", "doctor_path"]
@@ -60,7 +60,11 @@ def _engine(cfg: Config) -> Check:
             f"Hammunition {version} answers; this Bunker needs {ENGINE_FLOOR} or later "
             f"(hammunition artifacts and the LAN mirror, D-070)",
         )
-    return Check("engine", True, f"Hammunition {version} answers (floor {ENGINE_FLOOR})")
+    detail = f"Hammunition {version} answers (floor {ENGINE_FLOOR})"
+    note = newer_engine_note(version)
+    if note:
+        detail += f"; note: {note}"
+    return Check("engine", True, detail)
 
 
 def _volume(cfg: Config) -> Check:
@@ -77,6 +81,41 @@ def _volume(cfg: Config) -> Check:
     except IndexRefused as exc:
         return Check("volume", False, str(exc))
     return Check("volume", True, f"{root} is writable; its index lists {len(held.artifacts)}")
+
+
+def _unverified(cfg: Config) -> Check:
+    """Which artifacts with no digest are held (the ACMA register), and whether
+    the switch that holds them is on. Read from the index: the engine is not asked."""
+    try:
+        held = held_unverified(load_index(cfg.storage.root))
+    except (IndexRefused, OSError) as exc:
+        return Check("unverified", False, f"the volume's index cannot be read: {exc}")
+    names = ", ".join(f"{e.unit}/{e.name}" for e in held)
+    if not cfg.selection.hold_unverified:
+        left = (
+            f"; on the volume until you delete them (the next run withdraws them from the index and from serving): {names}"
+            if held
+            else ""
+        )
+        return Check(
+            "unverified",
+            True,
+            f"[selection] hold_unverified = false: artifacts with no digest are not held{left}",
+        )
+    if not held:
+        return Check(
+            "unverified",
+            True,
+            "[selection] hold_unverified = true (the default; the maintainer's ruling of "
+            "2026-10-02): none held yet. The ACMA register is held when the engine lists it",
+        )
+    return Check(
+        "unverified",
+        True,
+        f"[selection] hold_unverified = true (the maintainer's ruling of 2026-10-02): held "
+        f"without any digest to check: {names}. The ACMA register includes licensees' names "
+        f"and addresses; set hold_unverified = false to stop holding it (delete a copy already held yourself)",
+    )
 
 
 def _already_a_bunker(port: int) -> bool:
@@ -118,7 +157,7 @@ def _port(cfg: Config) -> Check:
 
 def doctor(cfg: Config) -> DoctorReport:
     report = DoctorReport([Check("config", True, f"{cfg.path} parses")])
-    report.checks += [_engine(cfg), _volume(cfg), _port(cfg)]
+    report.checks += [_engine(cfg), _volume(cfg), _unverified(cfg), _port(cfg)]
     return report
 
 
