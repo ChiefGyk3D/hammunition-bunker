@@ -34,7 +34,7 @@ def an_entry(**over: Any) -> Entry:
 
 def page(**over: Any) -> str:
     idx = Index(
-        engine_version="0.16.0",
+        engine_version="0.19.0",
         generated="2026-09-29T03:05:00Z",
         artifacts=[
             an_entry(),

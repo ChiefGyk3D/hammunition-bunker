@@ -20,10 +20,10 @@ FROM debian:trixie-slim
 # The Hammunition release this image asks and imports. The floor in
 # src/bunker/__init__.py and the pin in pyproject.toml say the same;
 # tests/test_repo_hygiene.py holds the three together.
-ARG ENGINE_VERSION=0.16.0
+ARG ENGINE_VERSION=0.19.0
 ARG ENGINE_URL=https://github.com/ChiefGyk3D/Hammunition/archive/refs/tags/v${ENGINE_VERSION}.tar.gz
 # Filled at the first release: sha256 of ENGINE_URL's bytes.
-ARG ENGINE_SHA256=3ede5cc4f2cb74bee3b08cb8ac4601e7c9d216436be515be42ed9cc17a855ce3
+ARG ENGINE_SHA256=9d35c28f01c86b6a6dea6c9e05edf9bdea6eaf65d42081fd80f769ca00b81a7a
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \

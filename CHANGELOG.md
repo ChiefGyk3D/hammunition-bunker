@@ -10,6 +10,14 @@ Notable changes, newest first. Versions follow
 
 ## [Unreleased]
 
+### Changed
+
+- The engine pin is Hammunition v0.19.0 (was v0.16.0): `ENGINE_FLOOR`,
+  `pyproject.toml`, the Dockerfile (tag and the tag archive's sha256, measured
+  twice) and the live workflow's ref. `Fetcher.fetch_sha1`,
+  `Fetcher.fetch_checked` and `hammunition.acma` are all present, so the
+  `sha1-publisher` and `unverified-zip` tests run on the pinned engine.
+
 ### Added
 
 - Every check kind the engine's `artifacts` document can emit, in one table

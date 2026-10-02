@@ -100,7 +100,7 @@ def test_a_canned_document_parses(tmp_path: Path, fake_engine: FakeEngine) -> No
         )
     )
     listing = engine.ask_engine(cfg(tmp_path))
-    assert listing.engine_version == "0.16.0"
+    assert listing.engine_version == "0.19.0"
     assert [a.name for a in listing.artifacts] == ["cty.dat", "north-america/us/vermont"]
     region = listing.artifacts[1]
     assert region.check == "md5-publisher"
@@ -187,7 +187,7 @@ def test_an_error_document_carries_its_message(tmp_path: Path, fake_engine: Fake
         {
             "schema": "hammunition/1",
             "kind": "error",
-            "engine": "0.16.0",
+            "engine": "0.19.0",
             "command": "artifacts",
             "exit_code": 2,
             "message": "could not find the catalog",
@@ -257,7 +257,7 @@ def test_engine_version_parses(tmp_path: Path, fake_engine: FakeEngine) -> None:
 
 @pytest.mark.parametrize(
     ("version", "ok"),
-    [("0.16.0", True), ("0.16.1", True), ("1.0.0", True), ("0.15.9", False), ("0.9.0", False)],
+    [("0.19.0", True), ("0.19.1", True), ("1.0.0", True), ("0.18.9", False), ("0.16.0", False)],
 )
 def test_meets_floor(version: str, ok: bool) -> None:
     assert engine.meets_floor(version) is ok

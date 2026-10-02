@@ -23,10 +23,9 @@ behaviour; where a step is a guess about a NAS's defaults, it says so.
   Manager, or any Debian-family host with rootless Podman. A US state's
   terrain alone can be several gigabytes; a region's map is tens to hundreds
   of megabytes.
-- The laptop running Hammunition 0.16.0 or later (`hammunition --version`).
+- The laptop running Hammunition 0.19.0 or later (`hammunition --version`).
   Selecting reference books (`selection.reference_books` below) needs the
-  release that carries #178 (the next release after v0.18.0, until it is
-  tagged); everything else works on 0.16.0.
+  release that carries #178 (v0.19.0 does, so every selection works on it).
 
 ## 1. Choose what to keep
 

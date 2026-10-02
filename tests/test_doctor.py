@@ -36,13 +36,13 @@ def test_all_good(tmp_path: Path, fake_engine: FakeEngine) -> None:
     report = doctor.doctor(cfg(tmp_path, free_port()))
     assert report.ok, report.checks
     assert set(by_name(report)) == {"config", "engine", "volume", "unverified", "port"}
-    assert "0.16.0" in by_name(report)["engine"].detail
+    assert "0.19.0" in by_name(report)["engine"].detail
 
 
 def test_an_engine_below_the_floor(tmp_path: Path, fake_engine: FakeEngine) -> None:
     fake_engine.set_version("0.15.0")
     check = by_name(doctor.doctor(cfg(tmp_path, free_port())))["engine"]
-    assert not check.ok and "0.16.0" in check.detail
+    assert not check.ok and "0.19.0" in check.detail
 
 
 def test_no_engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

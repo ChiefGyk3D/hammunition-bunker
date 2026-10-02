@@ -5,9 +5,8 @@
 # in ChiefGyk3D/git-your-ship-together; its `CI green` job is the one check
 # branch protection watches (`ci / CI green`).
 #
-# Until Hammunition v0.16.0 is tagged, the install step cannot resolve the
-# engine pin and this is red. That is the honest state: the Bunker needs the
-# engine's `artifacts` command and LAN mirror, which ship in that release.
+# The install step resolves the engine pin (Hammunition v0.19.0), which has the
+# `artifacts` command, the LAN mirror and every check kind's engine method.
 name: CI
 
 on:
