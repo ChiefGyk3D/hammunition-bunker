@@ -148,3 +148,37 @@ def test_fetch_engine_refuses_a_member_that_escapes(publisher: Publisher, tmp_pa
 def test_fetch_engine_refuses_file_urls(tmp_path: Path) -> None:
     with pytest.raises(SystemExit, match="https"):
         fetch_engine().main(["file:///etc/passwd", "a" * 64, str(tmp_path / "h")])
+
+
+def _without_filters(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make extractall behave as on Python 3.11.2 (Debian 12): no ``filter`` keyword."""
+    original = tarfile.TarFile.extractall
+
+    def extractall(self: tarfile.TarFile, *args: object, **kwargs: object) -> None:
+        if "filter" in kwargs:
+            raise TypeError("extractall() got an unexpected keyword argument 'filter'")
+        original(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(tarfile.TarFile, "extractall", extractall)
+
+
+def test_fetch_engine_extracts_without_filters(
+    publisher: Publisher, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _without_filters(monkeypatch)
+    data = tarball({"catalog/packages/x.yaml": b"name: x\n"})
+    url = publisher.put("/archive/v0.16.0.tar.gz", data)
+    dest = tmp_path / "opt" / "hammunition"
+    fetch_engine().main([url, hashlib.sha256(data).hexdigest(), str(dest)])
+    assert (dest / "catalog" / "packages" / "x.yaml").read_bytes() == b"name: x\n"
+
+
+def test_fetch_engine_refuses_an_escape_without_filters(
+    publisher: Publisher, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _without_filters(monkeypatch)
+    data = tarball({"../../evil": b"x"})
+    url = publisher.put("/archive/evil.tar.gz", data)
+    with pytest.raises(SystemExit):
+        fetch_engine().main([url, hashlib.sha256(data).hexdigest(), str(tmp_path / "h")])
+    assert not (tmp_path / "evil").exists()
