@@ -26,6 +26,7 @@ import tarfile
 import tempfile
 import urllib.parse
 import urllib.request
+import warnings
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -36,6 +37,37 @@ _LIMIT = 256 * 1024 * 1024
 
 def _refuse(message: str) -> SystemExit:
     return SystemExit(f"fetch_engine: {message}")
+
+
+def _extract_safely(tar: tarfile.TarFile, dest: Path) -> None:
+    """Unpack with the ``data`` filter, or the same rules by hand where it does not exist.
+
+    The filter arrived in Python 3.11.4. Debian 12 ships 3.11.2, so there the
+    members are checked here before a plain extractall: every path must stay
+    under ``dest``, a link must point inside it, and devices and FIFOs are
+    refused. That is what the ``data`` filter refuses too.
+    """
+    try:
+        tar.extractall(dest, filter="data")
+        return
+    except TypeError:
+        pass  # no extraction filters on this interpreter
+    root = dest.resolve()
+    for member in tar.getmembers():
+        target = (dest / member.name).resolve()
+        if target != root and root not in target.parents:
+            raise tarfile.TarError(f"{member.name!r} escapes the destination")
+        if member.isdev() or member.isfifo():
+            raise tarfile.TarError(f"{member.name!r} is a device or FIFO")
+        if member.issym() or member.islnk():
+            link = (target.parent / member.linkname).resolve()
+            if link != root and root not in link.parents:
+                raise tarfile.TarError(f"{member.name!r} links outside the destination")
+    with warnings.catch_warnings():
+        # Newer interpreters warn that no filter was given; every member was
+        # checked above, which is what the filter would have done.
+        warnings.simplefilter("ignore", DeprecationWarning)
+        tar.extractall(dest)  # noqa: S202
 
 
 def main(argv: Sequence[str]) -> None:
@@ -93,7 +125,7 @@ def main(argv: Sequence[str]) -> None:
         unpacked.mkdir()
         try:
             with tarfile.open(archive, "r:gz") as tar:
-                tar.extractall(unpacked, filter="data")
+                _extract_safely(tar, unpacked)
         except (tarfile.TarError, OSError) as exc:
             raise _refuse(f"{url}: the archive could not be unpacked safely: {exc}") from None
         tops = list(unpacked.iterdir())
