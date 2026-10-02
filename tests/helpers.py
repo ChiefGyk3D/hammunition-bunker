@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Any
 
-ENGINE_VERSION = "0.16.0"
+ENGINE_VERSION = "0.19.0"
 
 
 def entry(

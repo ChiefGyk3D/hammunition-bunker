@@ -65,7 +65,7 @@ before committing it.
    `ENGINE_URL`:
 
    ```
-   curl -fLo engine.tar.gz https://github.com/ChiefGyk3D/Hammunition/archive/refs/tags/v0.16.0.tar.gz
+   curl -fLo engine.tar.gz https://github.com/ChiefGyk3D/Hammunition/archive/refs/tags/v0.19.0.tar.gz
    sha256sum engine.tar.gz
    ```
 

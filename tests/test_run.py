@@ -45,7 +45,7 @@ def test_first_run_fetches_everything(scene: Scene) -> None:
     assert region.publisher_digest == md5(scene.data["region"])
     assert region.publisher_url == scene.region_url
     raw = json.loads((scene.root / "index.json").read_text())
-    assert raw["engine"] == {"version": "0.16.0"}
+    assert raw["engine"] == {"version": "0.19.0"}
     assert raw["last_run"]["fetched"] == 3 and raw["last_run"]["failed"] == 0
 
 

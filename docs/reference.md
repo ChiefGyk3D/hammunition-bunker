@@ -129,9 +129,9 @@ an engine newer than `bunker.ENGINE_CONTRACT` (the newest release whose
 artifacts document this table was written against) adds a note to the run's
 `warnings` and to `bunker doctor`; that alone is not a failure.
 
-`sha1-publisher` and `unverified-zip` need an engine newer than the pinned
-floor (`ENGINE_FLOOR`, v0.16.0): the artifact fails by name when the installed
-engine lacks `Fetcher.fetch_sha1`, `Fetcher.fetch_checked` or
+`sha1-publisher` and `unverified-zip` need an engine newer than v0.16.0;
+the pinned floor (`ENGINE_FLOOR`, v0.19.0) has both. On an older engine the
+artifact fails by name when the installed engine lacks `Fetcher.fetch_sha1`, `Fetcher.fetch_checked` or
 `hammunition.acma`, and nothing is downloaded.
 
 Downloads go through Hammunition's own `Fetcher`, by the method in the table.

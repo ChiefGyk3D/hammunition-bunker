@@ -35,8 +35,8 @@ from tests.scene import Clock, sha
 
 needs_sha1 = pytest.mark.skipif(
     not hasattr(Fetcher, "fetch_sha1"),
-    reason=f"the engine at the floor ({ENGINE_FLOOR}) has no Fetcher.fetch_sha1; "
-    "the release that carries it (v0.17.0 or later) runs these",
+    reason=f"this engine (floor {ENGINE_FLOOR}) has no Fetcher.fetch_sha1; "
+    "a release that carries it (v0.17.0 or later) runs these",
 )
 
 
@@ -110,7 +110,7 @@ class Bench:
         )
         return config.load(path)
 
-    def list(self, entries: list[dict[str, Any]], *, engine_version: str = "0.16.0") -> None:
+    def list(self, entries: list[dict[str, Any]], *, engine_version: str = "0.19.0") -> None:
         self.engine.set_doc(artifacts_doc(entries, engine=engine_version))
 
     def run(self, **kw: Any) -> run.RunReport:

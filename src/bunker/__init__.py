@@ -13,17 +13,17 @@ __all__ = ["ENGINE_CONTRACT", "ENGINE_FLOOR", "__version__"]
 
 __version__ = "0.1.0"
 
-#: The oldest Hammunition release that has ``hammunition artifacts`` and the
-#: LAN mirror (D-070). The pyproject pin and the image's ENGINE_VERSION say
+#: The oldest Hammunition release with every method the check table needs:
+#: ``hammunition artifacts``, the LAN mirror (D-070), ``Fetcher.fetch_sha1``,
+#: ``Fetcher.fetch_checked`` and ``hammunition.acma``. The pyproject pin and the image's ENGINE_VERSION say
 #: the same; ``tests/test_repo_hygiene.py`` holds the three together.
-ENGINE_FLOOR = "0.16.0"
+ENGINE_FLOOR = "0.19.0"
 
 #: The newest Hammunition release whose ``artifacts`` document this Bunker's
 #: check table (``bunker.checks``) was written against: it knows every kind
 #: that release can emit. An engine newer than this is named in the run and
 #: by ``bunker doctor``, and any kind the Bunker does not know is refused by
-#: name. This is not the pin: the image still installs ``ENGINE_FLOOR``'s
-#: release until the pin is bumped, and the two kinds that need a newer
-#: engine than the floor (``sha1-publisher``, ``unverified-zip``) say so
-#: when they are met on one that lacks the method.
+#: name. This is not the pin: the image installs ``ENGINE_FLOOR``'s release, and the two
+#: kinds that need a newer engine than v0.16.0 (``sha1-publisher``,
+#: ``unverified-zip``) say so when they are met on one that lacks the method.
 ENGINE_CONTRACT = "0.19.0"

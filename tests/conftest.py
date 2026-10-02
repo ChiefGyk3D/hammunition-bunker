@@ -84,7 +84,7 @@ import json, os, sys
 with open(os.environ["FAKE_ENGINE_ARGV"], "a", encoding="utf-8") as log:
     log.write(json.dumps(sys.argv[1:]) + "\\n")
 if "--version" in sys.argv[1:]:
-    print("hammunition " + os.environ.get("FAKE_ENGINE_VERSION", "0.16.0"))
+    print("hammunition " + os.environ.get("FAKE_ENGINE_VERSION", "0.19.0"))
     sys.exit(0)
 sys.stderr.write(os.environ.get("FAKE_ENGINE_STDERR", ""))
 with open(os.environ["FAKE_ENGINE_DOC"], encoding="utf-8") as doc:
