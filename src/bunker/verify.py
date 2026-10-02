@@ -74,8 +74,8 @@ def _structure(check: str, path: Path) -> str | None:
         return None
     try:
         acma().check_register(path)
-    except BackendError as exc:
-        return str(exc)
+    except BackendError:
+        raise
     except Exception as exc:
         return f"it fails the engine's structure check: {exc}"
     return None
@@ -108,7 +108,15 @@ def verify(
                 elif sha256 != claimed:
                     reason = f"its bytes no longer match its sidecar (sha256 {sha256[:12]}…)"
                 else:
-                    reason = _structure(entry.publisher_check, path)
+                    try:
+                        reason = _structure(entry.publisher_check, path)
+                    except BackendError as exc:
+                        # The engine cannot run the check: not damage, so the
+                        # entry is left as it was and the result says why.
+                        report.results.append(
+                            Result(entry.unit, entry.name, entry.path, False, f"not checked: {exc}")
+                        )
+                        continue
             if reason is None:
                 entry.verified = report.started
                 report.results.append(Result(entry.unit, entry.name, entry.path, True))

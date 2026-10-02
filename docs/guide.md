@@ -237,8 +237,8 @@ hold_unverified = false
 
 The next run declines the register by name (`declined:` in the run summary
 and under *Deferred* on the status page), never fetches it, and withdraws a
-copy already held from the index and from serving; the files stay on disk
-for you to delete. `bunker doctor` prints which unverified artifacts are held
+copy already held from the index and from serving; **the file, with its
+`client.csv`, stays on disk until you delete it yourself.** `bunker doctor` prints which unverified artifacts are held
 and which way the switch is set. `bunker verify` runs the zip's CRC pass over
 a held register as well as re-hashing it.
 

@@ -98,8 +98,8 @@ Keep this mirror on your LAN, as you must anyway.
 If you do not want client data on your NAS, set `hold_unverified = false`
 under `[selection]` in `bunker.toml` (default `true`). The register is then
 declined by name in every run, never fetched, and a copy already on the
-volume is withdrawn from the index and from serving (its files are left for
-you to delete). `bunker doctor` says which unverified artifacts are held and
+volume is withdrawn from the index and from serving, but **its file stays on
+the NAS until you delete it yourself** (the Bunker never deletes). `bunker doctor` says which unverified artifacts are held and
 which way the switch is set.
 
 ## What this is not

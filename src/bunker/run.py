@@ -432,13 +432,18 @@ class _Pass:
         basename = file_name(artifact.url)
         held = self._held(entry, folder, basename)
         corrupted = False
+        forced = False
         if held is not None:
             if KINDS[artifact.check].unverified:
                 # No digest exists to compare, so a held copy is never "newer
                 # elsewhere" or "stale": it is kept until the schedule says to
                 # fetch it again, and its bytes are re-hashed against the
                 # sidecar like any other.
-                matches, hashed = not self._fetch_due(artifact, entry), False
+                # A copy `bunker verify` found damaged is fetched again at once.
+                forced = entry.status == "corrupted"
+                matches, hashed = not (forced or self._fetch_due(artifact, entry)), False
+                if forced:
+                    corrupted = True
             else:
                 matches, hashed = self._matches(artifact, entry, held)
             if matches:
@@ -477,7 +482,7 @@ class _Pass:
                     entry.reason = "its bytes no longer matched its sidecar; being re-fetched"
                     self.save()
                 held = None
-            elif not self._fetch_due(artifact, entry):
+            elif not (forced or self._fetch_due(artifact, entry)):
                 cadence = self.cfg.schedule.cadence(artifact.unit)
                 reason = (
                     f"the engine lists a newer copy ({artifact.check} "

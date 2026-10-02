@@ -92,7 +92,11 @@ def _unverified(cfg: Config) -> Check:
         return Check("unverified", False, f"the volume's index cannot be read: {exc}")
     names = ", ".join(f"{e.unit}/{e.name}" for e in held)
     if not cfg.selection.hold_unverified:
-        left = f"; still on the volume until the next run withdraws them: {names}" if held else ""
+        left = (
+            f"; on the volume until you delete them (the next run withdraws them from the index and from serving): {names}"
+            if held
+            else ""
+        )
         return Check(
             "unverified",
             True,
@@ -110,7 +114,7 @@ def _unverified(cfg: Config) -> Check:
         True,
         f"[selection] hold_unverified = true (the maintainer's ruling of 2026-10-02): held "
         f"without any digest to check: {names}. The ACMA register includes licensees' names "
-        f"and addresses; set hold_unverified = false to keep it off this machine",
+        f"and addresses; set hold_unverified = false to stop holding it (delete a copy already held yourself)",
     )
 
 

@@ -27,7 +27,7 @@ import pytest
 
 from bunker import ENGINE_CONTRACT, ENGINE_FLOOR, checks, config, doctor, engine, run, verify
 from bunker.checks import KINDS
-from bunker.enginelib import Fetcher
+from bunker.enginelib import BackendError, Fetcher
 from bunker.index import load as load_index
 from tests.conftest import FakeEngine, Publisher
 from tests.helpers import artifacts_doc, config_text, entry
@@ -136,6 +136,19 @@ def test_the_table_covers_every_kind_the_installed_engine_can_emit() -> None:
     contract = importlib.import_module("hammunition.interface.artifacts")
     missing = [c for c in contract.CHECKS if c not in KINDS]
     assert not missing, f"the engine emits {missing}; add them to bunker.checks.KINDS"
+
+
+def test_the_engine_contract_kinds_are_listed_literally() -> None:
+    """The installed engine may be the old floor, where the test above checks
+    little: the six kinds of the contract release, spelled out."""
+    assert {
+        "sha256",
+        "md5-publisher",
+        "etag-md5",
+        "sha1-publisher",
+        "sha256-publisher",
+        "unverified-zip",
+    } == set(KINDS)
 
 
 def test_the_table_is_complete_and_consistent() -> None:
@@ -432,6 +445,26 @@ def test_verify_runs_the_zips_crc_pass_over_a_held_register(bench: Bench) -> Non
     assert stored is not None and stored.status == "corrupted"
 
 
+@needs_acma
+def test_a_register_verify_found_damaged_is_refetched_by_the_next_run(bench: Bench) -> None:
+    """Even on cadence `never`: `verify` promises the next run fetches it again,
+    and a sidecar that matches the damaged bytes must not talk the run out of it."""
+    bench.extra = '[schedule.units]\nacma-register = "never"\n'
+    data = register_zip(1, pad=NEEDLE)
+    bench.list([acma_entry(bench, data)])
+    bench.run()
+    path = bench.held("acma-register", "spectra_rrl.zip")
+    damaged = flip_in_stored_member(data, NEEDLE)
+    path.write_bytes(damaged)
+    path.with_name(path.name + ".sha256").write_text(f"{sha(damaged)}  {path.name}\n")
+    assert verify.verify(bench.cfg(), now=bench.clock).exit_code == 1
+    report = bench.run()
+    assert [o.action for o in report.outcomes] == ["fetched"]
+    assert bench.held("acma-register", "spectra_rrl.zip").read_bytes() == data
+    stored = load_index(bench.root).find("acma-register", "spectra_rrl.zip")
+    assert stored is not None and stored.status == "current"
+
+
 def test_an_engine_without_the_register_check_is_named_not_guessed(
     bench: Bench, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -578,3 +611,21 @@ def test_doctor_says_the_switch_is_off(tmp_path: Path, fake_engine: FakeEngine) 
     check = doctor_checks(config.load(path))["unverified"]
     assert check.ok and "hold_unverified = false" in check.detail
     assert "not held" in check.detail
+
+
+@needs_acma
+def test_verify_on_an_engine_that_cannot_check_does_not_call_it_corrupt(
+    bench: Bench, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bench.list([acma_entry(bench, register_zip(1))])
+    bench.run()
+    import bunker.verify as verify_module
+
+    def missing() -> Any:
+        raise BackendError("the installed Hammunition has no hammunition.acma")
+
+    monkeypatch.setattr(verify_module, "acma", missing)
+    report = verify.verify(bench.cfg(), now=bench.clock)
+    assert report.exit_code == 1 and "not checked" in (report.results[0].reason or "")
+    stored = load_index(bench.root).find("acma-register", "spectra_rrl.zip")
+    assert stored is not None and stored.status == "current"
