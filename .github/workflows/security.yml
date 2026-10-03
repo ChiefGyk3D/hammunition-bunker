@@ -25,8 +25,6 @@ jobs:
       security-events: write
       pull-requests: write
       id-token: write
-    secrets:
-      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}   # optional Service Token fallback; unset means OIDC only
     with:
       codeql-queries: security-extended,security-and-quality
       # The one dependency is the engine, pinned by git tag; pip-audit has no
@@ -34,6 +32,9 @@ jobs:
       # scanned by Trivy in release.yml.
       pip-audit-requirements: ""
       egress-policy: block
-      doppler-project: ci
-      doppler-config: ci
-      doppler-identity-id: ${{ vars.DOPPLER_IDENTITY_ID }}
+      # No Doppler here: gitleaks needs no licence for a personal account and
+      # Snyk is off, so nothing in this workflow reads a secret. On a push to
+      # main the OIDC fetch ran and was refused ("claim sub does not match
+      # identity auth config": the identity does not list this repository),
+      # which failed the job before gitleaks started. Add the repository to
+      # the Doppler identity, then these three inputs, if a secret is wanted.

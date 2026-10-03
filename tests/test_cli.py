@@ -237,3 +237,23 @@ def test_schedule_serves_runs_and_stops_on_sigterm(scene: Scene) -> None:
             proc.communicate()
     assert proc.returncode == 0, err
     assert "3 fetched" in out
+
+
+def test_signal_handler_does_not_deadlock_on_the_events_lock() -> None:
+    """A signal that lands inside Event.wait() holds the Event's lock in the
+    same thread; a handler calling set() inline would wait on it forever."""
+    import signal
+    import threading
+
+    stop = threading.Event()
+    before = signal.getsignal(signal.SIGTERM), signal.getsignal(signal.SIGINT)
+    try:
+        cli._stop_event_on_signals(stop)
+        handler = signal.getsignal(signal.SIGTERM)
+        assert callable(handler)
+        with stop._cond:  # type: ignore[attr-defined] # held inside wait()
+            handler(signal.SIGTERM, None)  # must return, not block
+        assert stop.wait(5), "the handler never set the event"
+    finally:
+        signal.signal(signal.SIGTERM, before[0])
+        signal.signal(signal.SIGINT, before[1])
