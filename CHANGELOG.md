@@ -10,6 +10,14 @@ Notable changes, newest first. Versions follow
 
 ## [Unreleased]
 
+### Added
+
+- The `unverified-fetch` check kind (Hammunition D-078): the on-request repeater
+  lists (ETCC, Brandmeister, hearham; unit `repeater-snapshots`) are held under
+  `hold_unverified`, keeping size and fetch date only, with no zip structure
+  check. `bunker verify` runs the engine's structure check on `unverified-zip`
+  copies alone.
+
 ### Changed
 
 - `index.json` is version 2, with a separate persisted `declined` list so

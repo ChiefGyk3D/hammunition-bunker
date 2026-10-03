@@ -60,7 +60,7 @@ refused by name. Relative paths resolve against the file's own directory.
 | `selection.map_freshness` | `"yearly"` | `yearly`, `monthly` or `latest`, as the engine takes it |
 | `selection.reference_books` | `[]` | Kiwix book ids (`hammunition reference books` lists them; D-066). Books are the largest artifacts a Bunker can hold, so unlike `units`, none does not mean "everything": it defers `kiwix-library` as *no books selected*. Requires Hammunition v0.19.0 or later (#178) |
 | `selection.units` | `[]` | the units to keep; empty is everything the engine lists |
-| `selection.hold_unverified` | `true` | keep the artifacts whose check names no digest (`unverified-zip`: the ACMA register, which carries `client.csv`, licensees' names and addresses its licence bars passing on in a derivative). `true` is the maintainer's ruling of 2026-10-02: the Bunker is for users to download things and have their repository set up, and the engine never opens `client.csv`. `false` declines every such artifact by name, never fetches it, and withdraws a copy already held from the index and from serving (its files are left for you to delete) |
+| `selection.hold_unverified` | `true` | keep the artifacts whose check names no digest (`unverified-zip`: the ACMA register; `unverified-fetch`: the on-request repeater lists; the register carries `client.csv`, licensees' names and addresses its licence bars passing on in a derivative). `true` is the maintainer's ruling of 2026-10-02: the Bunker is for users to download things and have their repository set up, and the engine never opens `client.csv`. `false` declines every such artifact by name, never fetches it, and withdraws a copy already held from the index and from serving (its files are left for you to delete) |
 | `storage.root` | `"/data"` | the volume |
 | `storage.keep_previous` | `true` | keep the last good copy beside the current one (one, never more) |
 | `storage.downloads` | `2` | downloads at a time, 1 to 4 |
@@ -114,12 +114,18 @@ installed engine can emit a kind that is not in it.
 | `etag-md5` | MD5, the Copernicus object's single-part ETag | the MD5 and the exact size | `Fetcher.fetch_md5` | yes |
 | `sha1-publisher` | SHA-1, from CoMaps' own map index at the pinned commit | the SHA-1 and the exact size (weaker than a pinned sha256) | `Fetcher.fetch_sha1` | yes |
 | `unverified-zip` | none (`digest` is null) | the zip's own CRC-32s and the tables the engine's reader needs (`hammunition.acma.check_register`); a damaged download, not an altered one | `Fetcher.fetch_checked` | no (the listed size is a `HEAD`'s; the file changes daily; the cap is the engine's `FETCH_LIMIT`) |
+| `unverified-fetch` | none (`digest` is null) | size and date only: the download must be non-empty and within four times the listed size (at least 1 MiB); no structure check (the on-request repeater lists, unit `repeater-snapshots`) | `Fetcher.fetch_checked` | no (the listed size is a `HEAD`'s and may be null; the list changes under its URL) |
 
-An `unverified-zip` artifact is stored, its size and fetch date recorded in
+Unverified repeater snapshots (`unverified-fetch`: the ETCC, Brandmeister and
+hearham lists the engine fetches on request) are held under the same
+`hold_unverified` switch as the ACMA zip; the engine's `fetch-*` commands read
+them from the mirror first (D-078).
+
+An `unverified-zip` or `unverified-fetch` artifact is stored, its size and fetch date recorded in
 the index, fetched again on its unit's schedule, and listed by `bunker
 status`, the status page and `bunker doctor` under *Unverified, held by the
 maintainer's ruling* (`status --json`: `unverified`). `bunker verify` also
-runs the engine's structure check over a held copy, which catches a copy
+runs the engine's structure check over a held `unverified-zip` copy, which catches a copy
 damaged before its sidecar was written; a sidecar's hash alone cannot.
 
 A **kind not in this table** is refused by name, with the engine's version
