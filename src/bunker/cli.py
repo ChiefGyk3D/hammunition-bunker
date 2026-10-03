@@ -158,6 +158,13 @@ def _stop_on_signals(stop: Callable[[], None]) -> None:
         signal.signal(sig, handler)
 
 
+def _stop_event_on_signals(stop: threading.Event) -> None:
+    # Not stop.set itself: Event.set takes the lock Event.wait holds, and a
+    # handler that lands inside wait() in the main thread would deadlock on
+    # it (seen as a SIGTERM that never ended the scheduler on Python 3.11).
+    _stop_on_signals(lambda: threading.Thread(target=stop.set, daemon=True).start())
+
+
 def _now_iso() -> str:
     return run.iso(datetime.now(UTC))
 
@@ -191,7 +198,7 @@ def cmd_schedule(args: argparse.Namespace, emit: Emit | None) -> int:
     )
     sys.stdout.flush()
     stop = threading.Event()
-    _stop_on_signals(stop.set)
+    _stop_event_on_signals(stop)
 
     def once() -> None:
         # Re-read the config each pass: a changed selection takes effect
