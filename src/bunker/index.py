@@ -192,7 +192,7 @@ def save(root: Path, index: Index, *, generated: str) -> None:
 
 
 def held_unverified(index: Index) -> list[Entry]:
-    """The artifacts on the volume whose check names no digest (``unverified-zip``),
+    """The artifacts on the volume whose check names no digest (``unverified-zip``, ``unverified-fetch``),
     in index order: what ``status``, the status page and ``doctor`` list under
     the maintainer's ruling."""
     return [e for e in index.artifacts if e.path is not None and is_unverified(e.publisher_check)]

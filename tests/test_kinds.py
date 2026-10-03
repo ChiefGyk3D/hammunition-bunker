@@ -536,16 +536,18 @@ def test_an_empty_repeater_snapshot_is_refused_and_nothing_is_kept(bench: Bench)
     bench.list([snapshot_entry(bench, b"", size=0)])
     report = bench.run()
     assert report.exit_code == 1 and report.outcomes[0].action == "failed"
+    assert "empty file arrived" in (report.outcomes[0].reason or "")
     assert not list(bench.root.glob("repeater-snapshots/**/*.csv"))
 
 
 @needs_checked
 def test_a_snapshot_far_past_its_listed_size_is_refused(bench: Bench) -> None:
     """The cap is four times what the engine's HEAD listed, at least 1 MiB."""
-    big = b"x" * (5 * 1024 * 1024)
+    big = register_zip(1, pad=b"x" * (5 * 1024 * 1024))  # a whole zip: only the cap refuses it
     bench.list([snapshot_entry(bench, big, size=100)])
     report = bench.run()
     assert report.exit_code == 1 and report.outcomes[0].action == "failed"
+    assert "CRC" not in (report.outcomes[0].reason or "")
     assert not list(bench.root.glob("repeater-snapshots/**/*.csv"))
 
 
@@ -757,3 +759,16 @@ def test_verify_on_an_engine_that_cannot_check_does_not_call_it_corrupt(
     assert report.exit_code == 1 and "not checked" in (report.results[0].reason or "")
     stored = load_index(bench.root).find("acma-register", "spectra_rrl.zip")
     assert stored is not None and stored.status == "current"
+
+
+@needs_checked
+def test_the_status_page_describes_a_held_repeater_snapshot_without_the_zip_wording(
+    bench: Bench,
+) -> None:
+    bench.list([snapshot_entry(bench, SNAPSHOT)])
+    bench.run()
+    html = (bench.root / "status.html").read_text()
+    assert "repeater-snapshots" in html and "only the size and the date" in html
+    assert "client.csv" not in html and "own structure" not in html
+    check = doctor._unverified(bench.cfg())
+    assert "repeater" in check.detail and "unverified-zip" not in check.detail

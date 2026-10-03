@@ -22,7 +22,7 @@
     {
       "name": "unverified",
       "ok": true,
-      "detail": "[selection] hold_unverified = true (the default; the maintainer's ruling of 2026-10-02): none held yet. The ACMA register is held when the engine lists it"
+      "detail": "[selection] hold_unverified = true (the default; the maintainer's ruling of 2026-10-02): none held yet. They are held when the engine lists them (the ACMA register, the on-request repeater lists)"
     },
     {
       "name": "port",

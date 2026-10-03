@@ -86,7 +86,7 @@ class Selection:
     """Empty: everything ``hammunition artifacts`` lists for the selection."""
     hold_unverified: bool = True
     """Keep the artifacts whose check names no digest (``unverified-zip``: the
-    ACMA register, D-074). True by the maintainer's ruling of 2026-10-02: the
+    ACMA register, D-074; ``unverified-fetch``: the on-request repeater lists, D-078). True by the maintainer's ruling of 2026-10-02: the
     register's ``client.csv`` carries licensees' names and addresses, which its
     licence bars passing on in a derivative; the Bunker is for users to
     download things and have their repository set up, and the engine never

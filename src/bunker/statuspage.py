@@ -17,7 +17,7 @@ from html import escape
 from pathlib import Path
 
 from bunker import __version__
-from bunker.checks import UNVERIFIED_LABEL
+from bunker.checks import KINDS, UNVERIFIED_LABEL
 from bunker.index import STATUSES, Index, held_unverified
 from bunker.volume import disk_used, write_atomic
 
@@ -135,15 +135,29 @@ def render(index: Index, *, disk_used: int) -> str:
 
     unverified = held_unverified(index)
     if unverified:
+        zipped = any(KINDS[e.publisher_check].zip_structure for e in unverified)
+        fetched = any(not KINDS[e.publisher_check].zip_structure for e in unverified)
+        parts = ["No digest exists for these: the publisher offers none and the file changes. "]
+        if zipped:
+            parts.append(
+                "For the zip, only the file's own structure was checked "
+                "(a damaged download is caught, an altered one is not). "
+            )
+        if fetched:
+            parts.append("For the repeater lists, only the size and the date fetched are kept. ")
+        parts.append(
+            "They are held because the maintainer ruled that a Bunker may keep them for "
+            "users to download (2026-10-02, 2026-10-03). "
+        )
+        if zipped:
+            parts.append(
+                "The ACMA register includes licensees' names and addresses "
+                "(<code>client.csv</code>), which its licence bars passing on in a "
+                "derivative: keep this mirror on your LAN. "
+            )
+        parts.append("Turn it off with <code>[selection] hold_unverified = false</code>.")
         out.append(
-            f"<h2>{_e(UNVERIFIED_LABEL)}</h2><p>No digest exists for these: the publisher "
-            f"offers none and the file changes. Only the file's own structure was checked "
-            f"(a damaged download is caught, an altered one is not). They are held because "
-            f"the maintainer ruled, on 2026-10-02, that a Bunker may keep them for users to "
-            f"download. The ACMA register includes licensees' names and addresses "
-            f"(<code>client.csv</code>), which its licence bars passing on in a derivative: "
-            f"keep this mirror on your LAN. Turn it off with "
-            f"<code>[selection] hold_unverified = false</code>.</p>"
+            f"<h2>{_e(UNVERIFIED_LABEL)}</h2><p>{''.join(parts)}</p>"
             '<div class="wrap"><table><thead><tr><th>Artifact</th><th>Check</th><th>Size</th>'
             "<th>Fetched</th></tr></thead><tbody>"
         )

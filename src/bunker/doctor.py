@@ -84,7 +84,7 @@ def _volume(cfg: Config) -> Check:
 
 
 def _unverified(cfg: Config) -> Check:
-    """Which artifacts with no digest are held (the ACMA register), and whether
+    """Which artifacts with no digest are held (the ACMA register, the repeater lists), and whether
     the switch that holds them is on. Read from the index: the engine is not asked."""
     try:
         held = held_unverified(load_index(cfg.storage.root))
@@ -107,14 +107,14 @@ def _unverified(cfg: Config) -> Check:
             "unverified",
             True,
             "[selection] hold_unverified = true (the default; the maintainer's ruling of "
-            "2026-10-02): none held yet. The ACMA register is held when the engine lists it",
+            "2026-10-02): none held yet. They are held when the engine lists them (the ACMA register, the on-request repeater lists)",
         )
     return Check(
         "unverified",
         True,
         f"[selection] hold_unverified = true (the maintainer's ruling of 2026-10-02): held "
         f"without any digest to check: {names}. The ACMA register includes licensees' names "
-        f"and addresses; set hold_unverified = false to stop holding it (delete a copy already held yourself)",
+        f"and addresses; set hold_unverified = false to stop holding these (delete a copy already held yourself)",
     )
 
 

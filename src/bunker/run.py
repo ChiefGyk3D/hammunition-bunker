@@ -302,7 +302,7 @@ def _download(root: Path, artifact: Artifact, transport: Transport) -> FetchResu
         # something arrived, within four times the size the engine's HEAD
         # listed (or the engine's default cap when it listed none).
         listed = artifact.size
-        cap = max(4 * listed, MIB) if listed else DEFAULT_MAX_BYTES
+        cap = max(4 * listed, MIB) if listed is not None else DEFAULT_MAX_BYTES
 
         def _arrived(path: Path) -> None:
             if path.stat().st_size == 0:
