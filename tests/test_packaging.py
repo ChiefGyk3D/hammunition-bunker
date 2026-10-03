@@ -182,3 +182,23 @@ def test_fetch_engine_refuses_an_escape_without_filters(
     with pytest.raises(SystemExit):
         fetch_engine().main([url, hashlib.sha256(data).hexdigest(), str(tmp_path / "h")])
     assert not (tmp_path / "evil").exists()
+
+
+def test_fetch_engine_refuses_a_symlink_that_points_outside_without_filters(
+    publisher: Publisher, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _without_filters(monkeypatch)
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+        link = tarfile.TarInfo("Hammunition-0.16.0/lnk")
+        link.type = tarfile.SYMTYPE
+        link.linkname = "../../.."
+        tar.addfile(link)
+        info = tarfile.TarInfo("Hammunition-0.16.0/lnk/evil")
+        info.size = 1
+        tar.addfile(info, io.BytesIO(b"x"))
+    data = buffer.getvalue()
+    url = publisher.put("/archive/evil.tar.gz", data)
+    with pytest.raises(SystemExit):
+        fetch_engine().main([url, hashlib.sha256(data).hexdigest(), str(tmp_path / "h")])
+    assert not (tmp_path / "evil").exists()
