@@ -15,7 +15,7 @@ from typing import Any
 import pytest
 
 import bunker
-from bunker import cli
+from bunker import cli, index
 from bunker.volume import RunLock
 from tests.scene import REGION, Scene
 from tests.test_doctor import free_port
@@ -120,6 +120,26 @@ def test_status_text_names_what_is_not_current(invoke: Any, scene: Scene) -> Non
     assert code == 0
     assert f"failed: osm-regions/{REGION}" in out
     assert "Last run:" in out
+
+
+def test_status_lists_declined_separately(invoke: Any, scene: Scene) -> None:
+    scene.root.mkdir(parents=True)
+    idx = index.Index(
+        deferred=[{"unit": "engine-unit", "name": "later", "reason": "not listed"}],
+        declined=[{"unit": "config-unit", "name": "disabled", "reason": "hold_unverified = false"}],
+    )
+    index.save(scene.root, idx, generated="2026-09-29T03:00:00Z")
+
+    code, out, _ = invoke("status")
+    assert code == 0
+    assert "  deferred: engine-unit/later: not listed" in out
+    assert "  declined: config-unit/disabled: hold_unverified = false" in out
+
+    code, out, _ = invoke("status", "--json")
+    doc = json.loads(out)
+    assert code == 0
+    assert doc["deferred"] == idx.deferred
+    assert doc["declined"] == idx.declined
 
 
 def test_status_before_any_run(invoke: Any) -> None:

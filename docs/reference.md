@@ -169,16 +169,17 @@ sha256 of the bytes whatever the publisher's check was.
 
 ## The index
 
-`index.json`, version 1:
+`index.json`, version 2:
 
 | Field | Meaning |
 |---|---|
 | `kind` | `"bunker-index"` |
-| `version` | `1`. An older index is upgraded in place on load; a newer one is refused |
+| `version` | `2`. A version-1 index is upgraded in place on load with `declined: []`; its existing `deferred` entries are left unchanged. A newer index is refused |
 | `generated` | when it was written, UTC |
 | `engine.version` | the Hammunition version the last run asked |
 | `artifacts` | one entry per artifact held or attempted (below) |
 | `deferred` | `{unit, name, reason}` for what the engine could not list |
+| `declined` | `{unit, name, reason}` for unverified artifacts declined because `selection.hold_unverified` is false |
 | `last_run` | `started`, `finished`, `fetched`, `verified`, `failed`, `corrupted`, `stale`, `error`, `plain_http` (the `unit/name` of every artifact whose publisher URL is plain HTTP) |
 
 Each artifact:
@@ -232,7 +233,7 @@ or changing one bumps the major. `tests/golden/` holds an example of each.
 | Kind | From | Fields |
 |---|---|---|
 | `run` | `bunker run` | `started`, `finished`, `engine_version`, `counts` (fetched, verified, unchanged, stale, failed, corrupted, deferred), `error`, `outcomes` (`unit`, `name`, `action`, `status`, `reason`, `corrupted`, `size`), `deferred`, `dropped`, `plain_http`, `refused` (`unit`, `name`, `reason`: a check kind this Bunker does not know), `declined` (the same shape: unverified artifacts left alone because `hold_unverified` is false), `warnings`, `exit_code` |
-| `status` | `bunker status` | `engine_version`, `generated`, `last_run`, `counts` (per status), `not_current` (`unit`, `name`, `status`, `reason`), `deferred`, `unverified` (`unit`, `name`, `check`, `size`, `fetched`, `licence`: what is held with no digest) |
+| `status` | `bunker status` | `engine_version`, `generated`, `last_run`, `counts` (per status), `not_current` (`unit`, `name`, `status`, `reason`), `deferred` (what the engine could not list), `declined` (what configuration declined), `unverified` (`unit`, `name`, `check`, `size`, `fetched`, `licence`: what is held with no digest) |
 | `verify` | `bunker verify` | `started`, `finished`, `checked`, `corrupted`, `results` (`unit`, `name`, `path`, `ok`, `reason`), `exit_code` |
 | `doctor` | `bunker doctor` | `ok`, `checks` (`name`, `ok`, `detail`) |
 | `error` | any command that ended without its own document | `command`, `exit_code`, `message` (everything written to stderr) |

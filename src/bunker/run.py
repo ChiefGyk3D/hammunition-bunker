@@ -691,7 +691,8 @@ def run(
         report.warnings = list(got.warnings)
         report.refused = [d for d in _deferred(got) if _is_refused(got, d)]
         report.declined = _deferred_of(declined)
-        report.deferred = idx.deferred = _deferred(got) + report.declined
+        report.deferred = idx.deferred = _deferred(got)
+        idx.declined = report.declined
 
         known = {a.unit for a in got.artifacts} | {d.unit for d in got.deferred}
         known |= {d.unit for d in declined}
