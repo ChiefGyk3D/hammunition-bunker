@@ -70,8 +70,8 @@ def _structure(check: str, path: Path) -> str | None:
     held bytes (the zip's CRC-32s and tables), which the sidecar's hash cannot
     do: a copy damaged *before* its sidecar was written still matches it."""
     kind = KINDS.get(check)
-    if kind is None or not kind.unverified:
-        return None
+    if kind is None or not kind.zip_structure:
+        return None  # a digest kind, or an unverified one with no structure to read
     try:
         acma().check_register(path)
     except BackendError:

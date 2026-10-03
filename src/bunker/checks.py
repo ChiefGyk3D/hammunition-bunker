@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """Every check kind the engine's ``artifacts`` document can name, and what
-this Bunker does for each (D-070; D-074, amended 2026-10-01 and 2026-10-02).
+this Bunker does for each (D-070; D-074, amended 2026-10-01 and 2026-10-02; D-078).
 
 One table, read by the document parser, the run, ``bunker verify``,
 ``bunker status``, ``bunker doctor`` and the documentation test, so no
@@ -46,6 +46,10 @@ class CheckKind:
     needs_digest: bool
     summary: str
     """What is verified, for the documentation table."""
+    zip_structure: bool = False
+    """The engine's zip structure check (``hammunition.acma.check_register``)
+    applies: ``unverified-zip`` only. ``unverified-fetch`` has no structure
+    to read, so size and date are all it keeps."""
 
     @property
     def unverified(self) -> bool:
@@ -109,6 +113,18 @@ KINDS: dict[str, CheckKind] = {
             "no digest exists (the ACMA register changes daily and the ACMA publishes "
             "none): the zip's own CRC-32s and the tables the engine's reader needs, "
             "by the engine's own check",
+            zip_structure=True,
+        ),
+        CheckKind(
+            "unverified-fetch",
+            "fetch_checked",
+            None,
+            False,
+            False,
+            "no digest exists (an on-request repeater list, `repeater-snapshots`: its "
+            "publisher states no licence and no checksum, and the list changes under "
+            "its URL): only the size and the date fetched are kept, with no structure "
+            "check, by the engine's own fetch",
         ),
     )
 }

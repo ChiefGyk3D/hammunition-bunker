@@ -68,6 +68,7 @@ for it and nothing is skipped quietly.
 | `etag-md5` | the Copernicus object's single-part ETag (its MD5) and the exact size | `Fetcher.fetch_md5` |
 | `sha1-publisher` | the SHA-1 and size in CoMaps' own map index at the pinned commit (the engine calls this weaker than a pinned sha256) | `Fetcher.fetch_sha1` |
 | `unverified-zip` | **no digest exists**: the zip's own CRC-32s and the tables the engine's reader needs, by the engine's own check | `Fetcher.fetch_checked` |
+| `unverified-fetch` | **no digest exists**: size and date fetched only, no structure check (the on-request repeater lists) | `Fetcher.fetch_checked` |
 
 Whatever the check, every file gets a sha256 sidecar of its bytes, so the
 volume is re-hashed one way. `sha1-publisher` and `unverified-zip` need an
@@ -88,6 +89,12 @@ fetches it again on its unit's schedule, runs the engine's structure check
 (the zip's CRCs) on every fetch and on `bunker verify`, and `bunker status`,
 the status page and `bunker doctor` list it under *Unverified, held by the
 maintainer's ruling*.
+
+Hammunition's on-request repeater lists (the ETCC, Brandmeister and hearham,
+unit `repeater-snapshots`) are held under the same `hold_unverified` switch:
+the engine lists them as `unverified-fetch`, which keeps their size and fetch
+date and nothing more, and the engine's `fetch-*` commands read them from the
+mirror first.
 
 The register's `client.csv` carries licensees' names and addresses, which the
 register's licence bars passing on in a derivative. **Ruling, 2026-10-02:**

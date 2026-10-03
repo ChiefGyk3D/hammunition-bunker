@@ -31,7 +31,7 @@ map_freshness = "yearly"   # yearly | monthly | latest, as `hammunition station`
 reference_books = []
 units = []                 # empty = everything `hammunition artifacts` lists
 # Keep artifacts the engine can name no digest for (today: the Australian ACMA
-# register, `unverified-zip`). Default true, by the maintainer's ruling of
+# register, `unverified-zip`, and the on-request repeater lists, `unverified-fetch`). Default true, by the maintainer's ruling of
 # 2026-10-02: the Bunker is for users to download things and have their
 # repository set up. That register includes `client.csv` (licensees' names and
 # addresses, which its licence bars passing on in a derivative; the engine

@@ -296,6 +296,20 @@ def _download(root: Path, artifact: Artifact, transport: Transport) -> FetchResu
     if kind.method == "fetch" and digest is not None:
         cap = artifact.size + MIB if artifact.size is not None else DEFAULT_MAX_BYTES
         result = method(RemoteArtifact(url=artifact.url, sha256=digest), max_bytes=cap)
+    elif kind.method == "fetch_checked" and not kind.zip_structure:
+        # An on-request repeater list (D-078): no digest and no structure to
+        # read. Size and date are all that is kept; the only check is that
+        # something arrived, within four times the size the engine's HEAD
+        # listed (or the engine's default cap when it listed none).
+        listed = artifact.size
+        cap = max(4 * listed, MIB) if listed is not None else DEFAULT_MAX_BYTES
+
+        def _arrived(path: Path) -> None:
+            if path.stat().st_size == 0:
+                raise BackendError(f"{artifact.url}: an empty file arrived")
+
+        result = method(artifact.url, max_bytes=cap, check=_arrived)
+        return cast(FetchResult, result)
     elif kind.method == "fetch_checked":
         # No digest exists: the engine's own check of the register's structure
         # (the zip's CRC-32s and the tables its reader needs) is the whole of it,

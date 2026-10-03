@@ -148,6 +148,7 @@ def test_the_engine_contract_kinds_are_listed_literally() -> None:
         "sha1-publisher",
         "sha256-publisher",
         "unverified-zip",
+        "unverified-fetch",
     } == set(KINDS)
 
 
@@ -159,14 +160,17 @@ def test_the_table_is_complete_and_consistent() -> None:
         "etag-md5",
         "sha1-publisher",
         "unverified-zip",
+        "unverified-fetch",
     }
     for name, kind in KINDS.items():
         assert kind.name == name
         assert kind.method in {"fetch", "fetch_md5", "fetch_sha1", "fetch_checked"}
         assert kind.algorithm in {"sha256", "md5", "sha1"} or kind.unverified
         assert kind.summary
-    assert [n for n, k in KINDS.items() if k.unverified] == ["unverified-zip"]
+    assert [n for n, k in KINDS.items() if k.unverified] == ["unverified-zip", "unverified-fetch"]
+    assert [n for n, k in KINDS.items() if k.zip_structure] == ["unverified-zip"]
     assert checks.is_unverified("unverified-zip") and not checks.is_unverified("sha256")
+    assert checks.is_unverified("unverified-fetch")
     assert not checks.is_unverified("blake3-publisher")
 
 
@@ -195,7 +199,7 @@ def test_an_unknown_kind_is_refused_by_name_with_the_engine_version(bench: Bench
     assert [a.name for a in listing.artifacts] == ["two"]
     (refused,) = listing.deferred
     assert refused.refused
-    for must in ("blake3-publisher", "0.99.0", "sha256", "unverified-zip"):
+    for must in ("blake3-publisher", "0.99.0", "sha256", "unverified-zip", "unverified-fetch"):
         assert must in refused.reason, refused.reason
 
 
@@ -465,6 +469,117 @@ def test_a_register_verify_found_damaged_is_refetched_by_the_next_run(bench: Ben
     assert stored is not None and stored.status == "current"
 
 
+# ---------------------------------------------------------------------------
+# unverified-fetch (the on-request repeater lists, D-078): size and date only.
+# ---------------------------------------------------------------------------
+
+SNAPSHOT = b"callsign,txMHz,rxMHz\nN0TST,146.940,146.340\n"
+needs_checked = pytest.mark.skipif(not has_acma(), reason="the engine has no Fetcher.fetch_checked")
+
+
+def snapshot_entry(bench: Bench, data: bytes, **kw: Any) -> dict[str, Any]:
+    url = bench.pub.put("/csvcreate_all.php", data)
+    return entry(
+        "repeater-snapshots",
+        "etcc.csv",
+        url,
+        "unverified-fetch",
+        None,
+        size=kw.pop("size", len(data)),
+        licence="RSGB ETCC: no licence stated",
+        **kw,
+    )
+
+
+@needs_checked
+def test_a_repeater_snapshot_is_held_with_its_size_and_date_and_no_structure_check(
+    bench: Bench,
+) -> None:
+    bench.list([snapshot_entry(bench, SNAPSHOT)])  # not a zip, not anything: bytes
+    report = bench.run()
+    assert report.exit_code == 0, report.summary_lines()
+    assert bench.held("repeater-snapshots", "etcc.csv").read_bytes() == SNAPSHOT
+    stored = load_index(bench.root).find("repeater-snapshots", "etcc.csv")
+    assert stored is not None
+    assert stored.publisher_check == "unverified-fetch" and stored.publisher_digest is None
+    assert stored.size == len(SNAPSHOT) and stored.fetched == "2026-09-29T03:00:00Z"
+    assert stored.status == "current" and report.warnings == []
+    assert held_names(bench) == ["repeater-snapshots/etcc.csv"]
+    # `verify` re-hashes it and does not ask the zip reader about a CSV.
+    assert verify.verify(bench.cfg(), now=bench.clock).exit_code == 0
+
+
+def held_names(bench: Bench) -> list[str]:
+    from bunker.index import held_unverified
+
+    return [f"{e.unit}/{e.name}" for e in held_unverified(load_index(bench.root))]
+
+
+@needs_checked
+def test_a_repeater_snapshot_is_refetched_on_schedule_and_never_stale(bench: Bench) -> None:
+    bench.list([snapshot_entry(bench, SNAPSHOT)])
+    bench.run()
+    requests = bench.pub.requests("/csvcreate_all.php")
+    newer = SNAPSHOT + b"N0CALL,147.000,147.600\n"
+    bench.list([snapshot_entry(bench, newer)])
+    bench.clock.advance(hours=1)
+    assert [o.action for o in bench.run().outcomes] == ["verified"]
+    assert bench.pub.requests("/csvcreate_all.php") == requests
+    assert load_index(bench.root).artifacts[0].status == "current"
+    bench.clock.advance(hours=24)
+    assert [o.action for o in bench.run().outcomes] == ["fetched"]
+    assert bench.held("repeater-snapshots", "etcc.csv").read_bytes() == newer
+
+
+@needs_checked
+def test_an_empty_repeater_snapshot_is_refused_and_nothing_is_kept(bench: Bench) -> None:
+    bench.list([snapshot_entry(bench, b"", size=0)])
+    report = bench.run()
+    assert report.exit_code == 1 and report.outcomes[0].action == "failed"
+    assert "empty file arrived" in (report.outcomes[0].reason or "")
+    assert not list(bench.root.glob("repeater-snapshots/**/*.csv"))
+
+
+@needs_checked
+def test_a_snapshot_far_past_its_listed_size_is_refused(bench: Bench) -> None:
+    """The cap is four times what the engine's HEAD listed, at least 1 MiB."""
+    big = register_zip(1, pad=b"x" * (5 * 1024 * 1024))  # a whole zip: only the cap refuses it
+    bench.list([snapshot_entry(bench, big, size=100)])
+    report = bench.run()
+    assert report.exit_code == 1 and report.outcomes[0].action == "failed"
+    assert "CRC" not in (report.outcomes[0].reason or "")
+    assert not list(bench.root.glob("repeater-snapshots/**/*.csv"))
+
+
+@needs_checked
+def test_a_snapshot_with_no_listed_size_is_still_held(bench: Bench) -> None:
+    bench.list([snapshot_entry(bench, SNAPSHOT, size=None)])
+    assert bench.run().exit_code == 0
+    assert bench.held("repeater-snapshots", "etcc.csv").read_bytes() == SNAPSHOT
+
+
+@needs_checked
+def test_switched_off_a_repeater_snapshot_is_declined_by_name_and_never_fetched(
+    tmp_path: Path, fake_engine: FakeEngine, publisher: Publisher
+) -> None:
+    off = Bench(tmp_path, fake_engine, publisher)
+    path = tmp_path / "bunker.toml"
+    path.write_text(
+        config_text(
+            str(off.root),
+            selection="map_regions = []\nhold_unverified = false",
+            extra='[schedule]\ndefault = "daily"\n',
+        )
+    )
+    off.list([snapshot_entry(off, SNAPSHOT)])
+    report = run.run(config.load(path), now=off.clock)
+    assert report.outcomes == [] and publisher.requests("/csvcreate_all.php") == 0
+    (declined,) = report.declined
+    assert declined["unit"] == "repeater-snapshots"
+    assert "hold_unverified = false" in (declined["reason"] or "")
+    assert "unverified-fetch" in (declined["reason"] or "")
+
+
 def test_an_engine_without_the_register_check_is_named_not_guessed(
     bench: Bench, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -644,3 +759,16 @@ def test_verify_on_an_engine_that_cannot_check_does_not_call_it_corrupt(
     assert report.exit_code == 1 and "not checked" in (report.results[0].reason or "")
     stored = load_index(bench.root).find("acma-register", "spectra_rrl.zip")
     assert stored is not None and stored.status == "current"
+
+
+@needs_checked
+def test_the_status_page_describes_a_held_repeater_snapshot_without_the_zip_wording(
+    bench: Bench,
+) -> None:
+    bench.list([snapshot_entry(bench, SNAPSHOT)])
+    bench.run()
+    html = (bench.root / "status.html").read_text()
+    assert "repeater-snapshots" in html and "only the size and the date" in html
+    assert "client.csv" not in html and "own structure" not in html
+    check = doctor._unverified(bench.cfg())
+    assert "repeater" in check.detail and "unverified-zip" not in check.detail
