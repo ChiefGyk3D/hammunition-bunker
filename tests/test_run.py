@@ -15,7 +15,7 @@ import pytest
 
 from bunker import config, index, run, volume
 from bunker.volume import Locked, RunLock
-from tests.helpers import deferred, entry
+from tests.helpers import config_text, deferred, entry
 from tests.scene import REGION, T0, TILE, Scene, md5, sha
 
 
@@ -278,6 +278,28 @@ def test_deferred_are_recorded(scene: Scene) -> None:
         {"unit": "kiwix-library", "name": None, "reason": "no books selected"}
     ]
     assert index.load(scene.root).deferred == report.deferred
+
+
+def test_declined_artifacts_are_not_engine_deferred(scene: Scene) -> None:
+    url = scene.pub.put("/register.zip", b"not fetched")
+    scene.list([entry("acma-register", "register.zip", url, "unverified-zip", None, size=11)])
+    path = scene.tmp / "bunker.toml"
+    path.write_text(
+        config_text(
+            str(scene.root),
+            selection="map_regions = []\nhold_unverified = false",
+            extra='[schedule]\ndefault = "daily"\n',
+        )
+    )
+    report = run.run(config.load(path), now=scene.clock)
+    idx = index.load(scene.root)
+    assert len(report.declined) == 1
+    assert report.declined[0]["unit"] == "acma-register"
+    assert report.declined[0]["name"] == "register.zip"
+    assert "hold_unverified = false" in (report.declined[0]["reason"] or "")
+    assert report.deferred == []
+    assert idx.declined == report.declined
+    assert idx.deferred == []
 
 
 def test_a_reference_book_is_fetched_through_the_normal_run_path(scene: Scene) -> None:

@@ -8,10 +8,8 @@ is rendered from, and what the next run reads to know what it holds. It is
 never the proof of anything: every file it names has a sidecar, and the
 bytes are re-hashed against the sidecar on a cadence.
 
-Version 1 is the first. A later version adds an entry to :data:`UPGRADES`
-(vN to vN+1); an older index is upgraded in place on load and written back,
-and a newer one refuses, because a Bunker cannot know what fields it would
-be dropping.
+An older index is upgraded in place on load and written back; a newer one
+refuses, because a Bunker cannot know what fields it would be dropping.
 """
 
 from __future__ import annotations
@@ -39,7 +37,7 @@ __all__ = [
     "save",
 ]
 
-INDEX_VERSION = 1
+INDEX_VERSION = 2
 KIND = "bunker-index"
 FILE = "index.json"
 #: ``current``: the copy matches what the engine lists. ``stale``: the
@@ -48,8 +46,14 @@ FILE = "index.json"
 #: good one. ``corrupted``: the bytes no longer match the sidecar.
 STATUSES = ("current", "stale", "failed", "corrupted")
 
+
+def _v1_to_v2(raw: dict[str, Any]) -> dict[str, Any]:
+    """Add the separate configuration-declined list without reclassifying v1."""
+    return {**raw, "version": 2, "declined": []}
+
+
 #: vN -> vN+1, applied in order by :func:`load`.
-UPGRADES: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {}
+UPGRADES: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {1: _v1_to_v2}
 
 
 class IndexRefused(Exception):
@@ -86,6 +90,7 @@ class Index:
     engine_version: str | None = None
     artifacts: list[Entry] = field(default_factory=list)
     deferred: list[dict[str, str | None]] = field(default_factory=list)
+    declined: list[dict[str, str | None]] = field(default_factory=list)
     last_run: dict[str, Any] | None = None
     generated: str | None = None
 
@@ -159,6 +164,7 @@ def load(root: Path) -> Index:
         engine_version=engine.get("version") if isinstance(engine, dict) else None,
         artifacts=[_entry(path, a, n) for n, a in enumerate(artifacts)],
         deferred=list(raw.get("deferred") or []),
+        declined=list(raw.get("declined") or []),
         last_run=raw.get("last_run"),
         generated=raw.get("generated"),
     )
@@ -177,6 +183,7 @@ def save(root: Path, index: Index, *, generated: str) -> None:
         "engine": {"version": index.engine_version},
         "artifacts": [asdict(e) for e in index.artifacts],
         "deferred": index.deferred,
+        "declined": index.declined,
         "last_run": index.last_run,
     }
     root.mkdir(parents=True, exist_ok=True)

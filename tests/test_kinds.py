@@ -498,7 +498,10 @@ def test_hold_unverified_must_be_a_boolean(tmp_path: Path, bad: str) -> None:
 
 @needs_acma
 def test_switched_off_the_register_is_declined_by_name_and_never_fetched(
-    tmp_path: Path, fake_engine: FakeEngine, publisher: Publisher
+    tmp_path: Path,
+    fake_engine: FakeEngine,
+    publisher: Publisher,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     off = Bench(tmp_path, fake_engine, publisher)
     path = tmp_path / "bunker.toml"
@@ -520,10 +523,22 @@ def test_switched_off_the_register_is_declined_by_name_and_never_fetched(
     assert report.exit_code == 0, report.summary_lines()
     assert [o.name for o in report.outcomes] == ["two"]
     assert publisher.requests("/rrl/spectra_rrl.zip") == 0
-    (declined,) = [d for d in report.deferred if d["unit"] == "acma-register"]
+    (declined,) = report.declined
+    assert declined["unit"] == "acma-register"
+    assert report.deferred == []
     assert declined["reason"] is not None
     assert "hold_unverified = false" in declined["reason"]
     assert "unverified-zip" in declined["reason"]
+    idx = load_index(off.root)
+    assert idx.declined == report.declined and idx.deferred == []
+    from bunker import cli
+
+    assert cli.main(["status", "--json", "--config", str(path)]) == 0
+    status = json.loads(capsys.readouterr().out)
+    assert status["declined"] == report.declined and status["deferred"] == []
+    html = (off.root / "status.html").read_text()
+    assert "Declined by your configuration" in html
+    assert "Deferred by the engine" not in html
 
 
 @needs_acma
