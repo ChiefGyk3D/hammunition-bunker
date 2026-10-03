@@ -21,6 +21,8 @@ Notable changes, newest first. Versions follow
   twice) and the live workflow's ref. `Fetcher.fetch_sha1`,
   `Fetcher.fetch_checked` and `hammunition.acma` are all present, so the
   `sha1-publisher` and `unverified-zip` tests run on the pinned engine.
+- The reference documents the v0.19.0 floor, full engine argv and data the
+  engine does not list for mirroring.
 
 ### Added
 
@@ -51,9 +53,8 @@ Notable changes, newest first. Versions follow
   selected book is a plain `sha256` artifact (`unit: kiwix-library`) and
   needs nothing book-specific from the run path; none selected defers the
   unit as "no books selected" like any other deferral. Books are the
-  largest artifacts a Bunker can hold, so the default stays empty. Needs
-  the Hammunition release that carries #178 (the next release after
-  v0.18.0, until it is tagged).
+  largest artifacts a Bunker can hold, so the default stays empty.
+  Requires Hammunition v0.19.0 or later (#178).
 
 ### Changed
 

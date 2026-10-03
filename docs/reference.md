@@ -58,7 +58,7 @@ refused by name. Relative paths resolve against the file's own directory.
 | `engine.timeout` | `600` | seconds `hammunition artifacts` may take; it asks publishers for checksums while it lists |
 | `selection.map_regions` | `[]` | Geofabrik region paths; none defers the map and terrain units |
 | `selection.map_freshness` | `"yearly"` | `yearly`, `monthly` or `latest`, as the engine takes it |
-| `selection.reference_books` | `[]` | Kiwix book ids (`hammunition reference books` lists them; D-066). Books are the largest artifacts a Bunker can hold, so unlike `units`, none does not mean "everything": it defers `kiwix-library` as *no books selected*. Needs the Hammunition release that carries #178 (the next release after v0.18.0, until it is tagged) |
+| `selection.reference_books` | `[]` | Kiwix book ids (`hammunition reference books` lists them; D-066). Books are the largest artifacts a Bunker can hold, so unlike `units`, none does not mean "everything": it defers `kiwix-library` as *no books selected*. Requires Hammunition v0.19.0 or later (#178) |
 | `selection.units` | `[]` | the units to keep; empty is everything the engine lists |
 | `selection.hold_unverified` | `true` | keep the artifacts whose check names no digest (`unverified-zip`: the ACMA register, which carries `client.csv`, licensees' names and addresses its licence bars passing on in a derivative). `true` is the maintainer's ruling of 2026-10-02: the Bunker is for users to download things and have their repository set up, and the engine never opens `client.csv`. `false` declines every such artifact by name, never fetches it, and withdraws a copy already held from the index and from serving (its files are left for you to delete) |
 | `storage.root` | `"/data"` | the volume |
@@ -241,8 +241,14 @@ or changing one bumps the major. `tests/golden/` holds an example of each.
 ## What the Bunker asks the engine
 
 ```
-hammunition [--catalog DIR] artifacts --json --map-freshness F [--map-regions R,...] [--units U,...]
+hammunition [--catalog DIR] artifacts --json --map-freshness F [--map-regions R,...] [--reference-books ID,...] [--units U,...]
 ```
+
+The engine can fetch the hearham, ETCC and Brandmeister repeater lists on
+request, but they are not listed by `hammunition artifacts`; neither are the
+FCC tower file or NOAA Weather Radio (NWR) list. The Bunker therefore has
+nothing to select for these, and whether it may keep copies has not been
+decided.
 
 The answer must be one `artifacts` document with schema `hammunition/1`;
 anything else fails the run with what the engine said. An entry with a
