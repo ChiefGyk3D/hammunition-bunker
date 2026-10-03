@@ -53,21 +53,33 @@ def _extract_safely(tar: tarfile.TarFile, dest: Path) -> None:
     except TypeError:
         pass  # no extraction filters on this interpreter
     root = dest.resolve()
-    for member in tar.getmembers():
-        target = (dest / member.name).resolve()
-        if target != root and root not in target.parents:
-            raise tarfile.TarError(f"{member.name!r} escapes the destination")
-        if member.isdev() or member.isfifo():
-            raise tarfile.TarError(f"{member.name!r} is a device or FIFO")
-        if member.issym() or member.islnk():
-            link = (target.parent / member.linkname).resolve()
-            if link != root and root not in link.parents:
-                raise tarfile.TarError(f"{member.name!r} links outside the destination")
+
+    def inside(path: Path) -> bool:
+        resolved = path.resolve()
+        return resolved == root or root in resolved.parents
+
     with warnings.catch_warnings():
-        # Newer interpreters warn that no filter was given; every member was
-        # checked above, which is what the filter would have done.
+        # Newer interpreters warn that no filter was given; each member is
+        # checked here against the tree as it exists at that moment, which is
+        # what the filter would have done.
         warnings.simplefilter("ignore", DeprecationWarning)
-        tar.extractall(dest)  # noqa: S202
+        for member in tar.getmembers():
+            target = dest / member.name
+            # The parent is resolved against what has been extracted so far,
+            # so a symlink laid down by an earlier member cannot redirect a
+            # later one outside the destination.
+            if not inside(target.parent) or not inside(target):
+                raise tarfile.TarError(f"{member.name!r} escapes the destination")
+            if member.isdev() or member.isfifo():
+                raise tarfile.TarError(f"{member.name!r} is a device or FIFO")
+            if member.issym() or member.islnk():
+                link = Path(member.linkname)
+                link_target = link if link.is_absolute() else target.parent / link
+                if member.islnk():
+                    link_target = dest / member.linkname
+                if not inside(link_target):
+                    raise tarfile.TarError(f"{member.name!r} links outside the destination")
+            tar.extract(member, dest)
 
 
 def main(argv: Sequence[str]) -> None:
