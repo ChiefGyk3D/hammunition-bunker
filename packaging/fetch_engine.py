@@ -26,7 +26,6 @@ import tarfile
 import tempfile
 import urllib.parse
 import urllib.request
-import warnings
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -39,47 +38,59 @@ def _refuse(message: str) -> SystemExit:
     return SystemExit(f"fetch_engine: {message}")
 
 
+def _plain_member_name(name: str) -> bool:
+    return not name.startswith("/") and ".." not in Path(name).parts
+
+
 def _extract_safely(tar: tarfile.TarFile, dest: Path) -> None:
     """Unpack with the ``data`` filter, or the same rules by hand where it does not exist.
 
-    The filter arrived in Python 3.11.4. Debian 12 ships 3.11.2, so there the
-    members are checked here before a plain extractall: every path must stay
-    under ``dest``, a link must point inside it, and devices and FIFOs are
-    refused. That is what the ``data`` filter refuses too.
+    The filter arrived in Python 3.11.4. Debian 12 ships 3.11.2, so there each
+    member is validated and then written by this function to a path it
+    computed and checked itself, never the archive's own choice: the path must
+    stay under ``dest``, a symlink must point inside it, and hard links,
+    devices and FIFOs are refused. That is what the ``data`` filter refuses too.
     """
-    try:
-        tar.extractall(dest, filter="data")
+    if hasattr(tarfile, "data_filter"):
+        safe = [m for m in tar.getmembers() if _plain_member_name(m.name)]
+        if len(safe) != len(tar.getmembers()):
+            raise tarfile.TarError("an archive member has an absolute or '..' path")
+        tar.extractall(dest, members=safe, filter="data")
         return
-    except TypeError:
-        pass  # no extraction filters on this interpreter
     root = dest.resolve()
 
     def inside(path: Path) -> bool:
         resolved = path.resolve()
         return resolved == root or root in resolved.parents
 
-    with warnings.catch_warnings():
-        # Newer interpreters warn that no filter was given; each member is
-        # checked here against the tree as it exists at that moment, which is
-        # what the filter would have done.
-        warnings.simplefilter("ignore", DeprecationWarning)
-        for member in tar.getmembers():
-            target = dest / member.name
-            # The parent is resolved against what has been extracted so far,
-            # so a symlink laid down by an earlier member cannot redirect a
-            # later one outside the destination.
-            if not inside(target.parent) or not inside(target):
-                raise tarfile.TarError(f"{member.name!r} escapes the destination")
-            if member.isdev() or member.isfifo():
-                raise tarfile.TarError(f"{member.name!r} is a device or FIFO")
-            if member.issym() or member.islnk():
-                link = Path(member.linkname)
-                link_target = link if link.is_absolute() else target.parent / link
-                if member.islnk():
-                    link_target = dest / member.linkname
-                if not inside(link_target):
-                    raise tarfile.TarError(f"{member.name!r} links outside the destination")
-            tar.extract(member, dest)
+    for member in tar.getmembers():
+        if not _plain_member_name(member.name):
+            raise tarfile.TarError(f"{member.name!r} escapes the destination")
+        target = dest / member.name
+        # The parent is resolved against what has been extracted so far,
+        # so a symlink laid down by an earlier member cannot redirect a
+        # later one outside the destination.
+        if not inside(target.parent) or not inside(target):
+            raise tarfile.TarError(f"{member.name!r} escapes the destination")
+        if member.isdir():
+            target.mkdir(parents=True, exist_ok=True)
+        elif member.issym():
+            link = Path(member.linkname)
+            if not inside(link if link.is_absolute() else target.parent / link):
+                raise tarfile.TarError(f"{member.name!r} links outside the destination")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.symlink_to(member.linkname)
+        elif member.isreg():
+            source = tar.extractfile(member)
+            if source is None:
+                raise tarfile.TarError(f"{member.name!r} has no data")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with source, target.open("xb") as out:
+                shutil.copyfileobj(source, out)
+            # Like the data filter: keep the exec bit, drop setuid/setgid/sticky.
+            target.chmod(0o755 if member.mode & 0o100 else 0o644)
+        else:
+            raise tarfile.TarError(f"{member.name!r} is a link, device or FIFO")
 
 
 def main(argv: Sequence[str]) -> None:
@@ -94,7 +105,9 @@ def main(argv: Sequence[str]) -> None:
         )
     if urllib.parse.urlsplit(url).scheme not in ("https", "http"):
         raise _refuse(f"{url!r}: only https (or http, for a test) URLs are fetched")
-    dest = Path(dest_text)
+    # DEST is the build operator's own argument (a Dockerfile RUN line); it is
+    # made absolute here so every later use names one normalized location.
+    dest = Path(dest_text).resolve()
     if dest.exists():
         raise _refuse(f"{dest} already exists")
 

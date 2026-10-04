@@ -152,12 +152,10 @@ def test_fetch_engine_refuses_file_urls(tmp_path: Path) -> None:
 
 def _without_filters(monkeypatch: pytest.MonkeyPatch) -> None:
     """Make extractall behave as on Python 3.11.2 (Debian 12): no ``filter`` keyword."""
-    original = tarfile.TarFile.extractall
+    monkeypatch.delattr(tarfile, "data_filter", raising=False)
 
     def extractall(self: tarfile.TarFile, *args: object, **kwargs: object) -> None:
-        if "filter" in kwargs:
-            raise TypeError("extractall() got an unexpected keyword argument 'filter'")
-        original(self, *args, **kwargs)  # type: ignore[arg-type]
+        raise AssertionError("the by-hand path must not call extractall")
 
     monkeypatch.setattr(tarfile.TarFile, "extractall", extractall)
 
@@ -198,6 +196,17 @@ def test_fetch_engine_refuses_a_symlink_that_points_outside_without_filters(
         info.size = 1
         tar.addfile(info, io.BytesIO(b"x"))
     data = buffer.getvalue()
+    url = publisher.put("/archive/evil.tar.gz", data)
+    with pytest.raises(SystemExit):
+        fetch_engine().main([url, hashlib.sha256(data).hexdigest(), str(tmp_path / "h")])
+    assert not (tmp_path / "evil").exists()
+
+
+def test_fetch_engine_refuses_dotdot_inside_a_path_without_filters(
+    publisher: Publisher, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _without_filters(monkeypatch)
+    data = tarball({"top/../../evil": b"x"})
     url = publisher.put("/archive/evil.tar.gz", data)
     with pytest.raises(SystemExit):
         fetch_engine().main([url, hashlib.sha256(data).hexdigest(), str(tmp_path / "h")])
