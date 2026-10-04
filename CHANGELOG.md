@@ -12,6 +12,7 @@ Notable changes, newest first. Versions follow
 
 ### Added
 
+- The GYST callers move from v1.9.0 to v1.10.0 (a no-op for the called workflows: their inputs are identical).
 - Fuzzing: Atheris targets under `fuzz/` for the `--json` envelope, `bunker.toml`,
   the engine's `artifacts` document, `index.json` with the status page, and the
   server's paths and ranges, run by GYST's `python-fuzz.yml` (v1.10.0) from
