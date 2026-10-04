@@ -123,3 +123,21 @@ def test_human_size() -> None:
     assert statuspage.human_size(0) == "0 B"
     assert statuspage.human_size(1536) == "1.5 KiB"
     assert statuspage.human_size(5 * 1024**4) == "5.0 TiB"
+
+
+def test_the_lede_and_a_unit_row_read_as_one_piece_each() -> None:
+    # Both are built from several string literals; a missing comma or space
+    # would merge or glue them silently.
+    html = page()
+    assert (
+        "It serves without authentication, over plain HTTP, because every machine "
+        "that takes a file from it checks every byte against a digest it already "
+        "holds. It belongs on your LAN only: never publish its port on an "
+        "interface the internet can reach.</p>"
+    ) in html
+    row = re.search(r"<tr><td>osm-regions</td>.*?</tr>", html, re.S)
+    assert row is not None
+    cells = re.findall(r"<td>(.*?)</td>", row.group(0))
+    assert cells[0] == "osm-regions"
+    assert len(cells) == 6
+    assert cells[1:] == ["1", "0", "1", "0", "4.0 MiB"]

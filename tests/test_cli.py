@@ -14,8 +14,7 @@ from typing import Any
 
 import pytest
 
-import bunker
-from bunker import cli, index
+from bunker import __version__, cli, index
 from bunker.volume import RunLock
 from tests.scene import REGION, Scene
 from tests.test_doctor import free_port
@@ -27,7 +26,7 @@ def normalise(text: str, scene: Scene) -> Any:
     text = text.replace(scene.pub.base, "http://publisher.test")
     text = text.replace(str(scene.tmp), "<tmp>")
     doc = json.loads(text)
-    assert doc["engine"] == bunker.__version__
+    assert doc["engine"] == __version__
     doc["engine"] = "<bunker version>"
     return doc
 
@@ -191,7 +190,7 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         cli.main(["--version"])
     assert exc.value.code == 0
-    assert capsys.readouterr().out.strip() == f"bunker {bunker.__version__}"
+    assert capsys.readouterr().out.strip() == f"bunker {__version__}"
 
 
 def test_no_command_is_a_usage_error(capsys: pytest.CaptureFixture[str]) -> None:

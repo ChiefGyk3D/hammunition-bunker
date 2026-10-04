@@ -496,7 +496,6 @@ class _Pass:
                     entry.status = "corrupted"
                     entry.reason = "its bytes no longer matched its sidecar; being re-fetched"
                     self.save()
-                held = None
             elif not (forced or self._fetch_due(artifact, entry)):
                 cadence = self.cfg.schedule.cadence(artifact.unit)
                 reason = (

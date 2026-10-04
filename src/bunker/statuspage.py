@@ -58,6 +58,24 @@ def _e(value: object) -> str:
     return escape("" if value is None else str(value))
 
 
+_LEDE = (
+    '<p class="lede">A verified LAN mirror of Hammunition\'s offline data. It serves '
+    "without authentication, over plain HTTP, because every machine that takes a file "
+    "from it checks every byte against a digest it already holds. It belongs on your "
+    "LAN only: never publish its port on an interface the internet can reach.</p>"
+)
+
+
+def _unit_row(unit: str, c: dict[str, int], size: int) -> str:
+    return "".join(
+        (
+            f"<tr><td>{_e(unit)}</td>\n<td>{c['current']}</td>\n<td>{c['stale']}</td>\n",
+            f"<td>{c['failed']}</td>\n<td>{c['corrupted']}</td>\n",
+            f"<td>{human_size(size)}</td></tr>",
+        )
+    )
+
+
 def render(index: Index, *, disk_used: int) -> str:
     """The page, as a string."""
     run = index.last_run or {}
@@ -68,10 +86,7 @@ def render(index: Index, *, disk_used: int) -> str:
         "<title>Hammunition Bunker</title>",
         f"<style>{_STYLE}</style></head><body>",
         "<h1>Hammunition Bunker</h1>",
-        '<p class="lede">A verified LAN mirror of Hammunition\'s offline data. It serves '
-        "without authentication, over plain HTTP, because every machine that takes a file "
-        "from it checks every byte against a digest it already holds. It belongs on your "
-        "LAN only: never publish its port on an interface the internet can reach.</p>",
+        _LEDE,
         "<h2>Last run</h2>",
     ]
     if not run:
@@ -107,11 +122,7 @@ def render(index: Index, *, disk_used: int) -> str:
     ]
     for unit in sorted(per_unit):
         c = per_unit[unit]
-        out.append(
-            f"<tr><td>{_e(unit)}</td>\n<td>{c['current']}</td>\n<td>{c['stale']}</td>\n"
-            f"<td>{c['failed']}</td>\n<td>{c['corrupted']}</td>\n"
-            f"<td>{human_size(sizes[unit])}</td></tr>"
-        )
+        out.append(_unit_row(unit, c, sizes[unit]))
     if not per_unit:
         out.append('<tr><td colspan="6">Nothing held yet.</td></tr>')
     out.append("</tbody></table></div>")
