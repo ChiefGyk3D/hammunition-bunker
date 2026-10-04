@@ -11,8 +11,7 @@ from typing import Any
 
 import pytest
 
-import bunker
-from bunker import envelope
+from bunker import __version__, envelope
 
 Emit = Callable[[str, Mapping[str, Any]], None]
 
@@ -22,7 +21,7 @@ def test_envelope_shape_is_d059s() -> None:
     assert list(doc) == ["schema", "kind", "engine", "a"]
     assert doc["schema"] == "bunker/1"
     assert doc["kind"] == "status"
-    assert doc["engine"] == bunker.__version__
+    assert doc["engine"] == __version__
 
 
 def test_body_may_not_shadow_the_envelope() -> None:

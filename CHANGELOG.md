@@ -31,6 +31,9 @@ Notable changes, newest first. Versions follow
   `sha1-publisher` and `unverified-zip` tests run on the pinned engine.
 - The reference documents the v0.19.0 floor, full engine argv and data the
   engine does not list for mirroring.
+- The run lock `<root>/.lock` is created 0600 (was 0644): only the run that
+  flocks it ever opens it. Adds `SECURITY.md`. Status-page strings, an unused
+  import and a dead store are tidied (CodeQL sweep).
 
 ### Added
 

@@ -237,6 +237,14 @@ def test_the_lock_is_exclusive(tmp_path: Path) -> None:
         pass
 
 
+def test_the_lock_file_is_the_owners_alone(tmp_path: Path) -> None:
+    # Only the run that flocks it ever opens it; the LAN server never reads it
+    # (it is on the server's refuse list), so no other account needs a mode bit.
+    with RunLock(tmp_path):
+        pass
+    assert (tmp_path / ".lock").stat().st_mode & 0o777 == 0o600
+
+
 def test_disk_used_counts_files(tmp_path: Path) -> None:
     (tmp_path / "a").mkdir()
     (tmp_path / "a" / "f").write_bytes(b"x" * 1000)

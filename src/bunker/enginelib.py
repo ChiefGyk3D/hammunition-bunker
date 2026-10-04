@@ -21,7 +21,7 @@ from __future__ import annotations
 import importlib
 from types import ModuleType
 
-import hammunition.backends  # noqa: F401 - must precede hammunition.fetch; see above
+import hammunition.backends
 from hammunition.backends.base import BackendError
 from hammunition.fetch import (
     DEFAULT_MAX_BYTES,
@@ -33,6 +33,10 @@ from hammunition.fetch import (
     safe_name,
 )
 from hammunition.manifest.schema import RemoteArtifact
+
+# Held, not just imported: the import above must precede hammunition.fetch (see
+# the module docstring), and a name that is read is an import that is used.
+_BACKENDS_FIRST: ModuleType = hammunition.backends
 
 __all__ = [
     "DEFAULT_MAX_BYTES",
