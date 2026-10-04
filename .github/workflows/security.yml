@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # CodeQL (Python and the workflows themselves), gitleaks and dependency
-# review. The jobs live in ChiefGyk3D/git-your-ship-together.
+# review, plus Snyk (token from Doppler over OIDC). The jobs live in
+# ChiefGyk3D/git-your-ship-together.
 name: Security
 
 on:
@@ -32,9 +33,8 @@ jobs:
       # scanned by Trivy in release.yml.
       pip-audit-requirements: ""
       egress-policy: block
-      # No Doppler here: gitleaks needs no licence for a personal account and
-      # Snyk is off, so nothing in this workflow reads a secret. On a push to
-      # main the OIDC fetch ran and was refused ("claim sub does not match
-      # identity auth config": the identity does not list this repository),
-      # which failed the job before gitleaks started. Add the repository to
-      # the Doppler identity, then these three inputs, if a secret is wanted.
+      # Snyk reads SNYK_TOKEN from the Doppler config over OIDC (no stored secret).
+      snyk: true
+      doppler-project: ci
+      doppler-config: ci
+      doppler-identity-id: ${{ vars.DOPPLER_IDENTITY_ID }}
