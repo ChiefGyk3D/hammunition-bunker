@@ -64,11 +64,21 @@ def test_workflows_are_read_only_by_default(path: Path) -> None:
     assert doc["permissions"] == {"contents": "read"}
 
 
+# python-fuzz.yml first shipped in GYST v1.10.0; the other callers are still at the
+# release they were pinned to, so it is checked on its own.
+FUZZ_PIN = "b4dec64ea0efba8b0604339e283adb25da6fd430"  # v1.10.0's commit
+
+
 def test_gyst_pins_agree() -> None:
     pins = set()
     for path in WORKFLOWS:
-        for sha in re.findall(r"git-your-ship-together/\S+@([0-9a-f]{40})", path.read_text()):
-            pins.add(sha)
+        for name, sha in re.findall(
+            r"git-your-ship-together/\.github/workflows/(\S+)@([0-9a-f]{40})", path.read_text()
+        ):
+            if name == "python-fuzz.yml":
+                assert sha == FUZZ_PIN, f"{path.name}: python-fuzz.yml is not at v1.10.0's commit"
+            else:
+                pins.add(sha)
     assert len(pins) == 1, f"the GYST workflows are pinned to more than one commit: {pins}"
 
 

@@ -112,15 +112,66 @@ def _refuse(path: Path, detail: str) -> IndexRefused:
     )
 
 
+#: The type each Entry field holds on disk. Everything downstream (the status
+#: page, the server's routes, the run's arithmetic) trusts these, so a document
+#: that breaks one is refused here, with the field named, not at the first use.
+_ENTRY_TYPES: dict[str, tuple[type, ...]] = {
+    "unit": (str,),
+    "name": (str,),
+    "path": (str, type(None)),
+    "sha256": (str, type(None)),
+    "size": (int, type(None)),
+    "publisher_check": (str,),
+    "publisher_digest": (str, type(None)),
+    "publisher_url": (str,),
+    "licence": (str,),
+    "fetched": (str, type(None)),
+    "verified": (str, type(None)),
+    "status": (str,),
+    "reason": (str, type(None)),
+    "previous": (str, type(None)),
+}
+
+
+def _is(value: Any, types: tuple[type, ...]) -> bool:
+    return isinstance(value, types) and not (isinstance(value, bool) and bool not in types)
+
+
 def _entry(path: Path, raw: Any, position: int) -> Entry:
     if not isinstance(raw, dict):
         raise _refuse(path, f"artifact {position} is not an object")
     missing = [k for k in _ENTRY_FIELDS if k not in raw]
     if missing:
         raise _refuse(path, f"artifact {position} has no {missing[0]!r}")
+    for key, types in _ENTRY_TYPES.items():
+        if not _is(raw[key], types):
+            raise _refuse(
+                path,
+                f"artifact {position}: {key!r} is {raw[key]!r}, not "
+                + " or ".join(t.__name__ for t in types),
+            )
     if raw["status"] not in STATUSES:
         raise _refuse(path, f"artifact {position} has status {raw['status']!r}")
     return Entry(**{k: raw[k] for k in _ENTRY_FIELDS})
+
+
+def _notes(path: Path, raw: dict[str, Any], key: str) -> list[dict[str, str | None]]:
+    """``deferred`` or ``declined``: a list of objects whose values are text or null."""
+    value = raw.get(key) or []
+    if not isinstance(value, list) or not all(
+        isinstance(row, dict) and all(isinstance(v, str | None) for v in row.values())
+        for row in value
+    ):
+        raise _refuse(path, f"its {key} are not a list of objects of text")
+    return list(value)
+
+
+def _last_run(path: Path, value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or not isinstance(value.get("plain_http", []), list):
+        raise _refuse(path, "its last_run is not an object")
+    return value
 
 
 def load(root: Path) -> Index:
@@ -131,6 +182,8 @@ def load(root: Path) -> Index:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         return Index()
+    except UnicodeDecodeError as exc:
+        raise _refuse(path, f"not JSON: {exc}") from None
     try:
         raw = json.loads(text)
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
@@ -160,13 +213,17 @@ def load(root: Path) -> Index:
     if not isinstance(artifacts, list):
         raise _refuse(path, "its artifacts are not a list")
     engine = raw.get("engine")
+    engine_version = engine.get("version") if isinstance(engine, dict) else None
+    generated = raw.get("generated")
+    if not isinstance(engine_version, str | None) or not isinstance(generated, str | None):
+        raise _refuse(path, "its engine version or generated time is not text")
     index = Index(
-        engine_version=engine.get("version") if isinstance(engine, dict) else None,
+        engine_version=engine_version,
         artifacts=[_entry(path, a, n) for n, a in enumerate(artifacts)],
-        deferred=list(raw.get("deferred") or []),
-        declined=list(raw.get("declined") or []),
-        last_run=raw.get("last_run"),
-        generated=raw.get("generated"),
+        deferred=_notes(path, raw, "deferred"),
+        declined=_notes(path, raw, "declined"),
+        last_run=_last_run(path, raw.get("last_run")),
+        generated=generated,
     )
     if upgraded:
         save(root, index, generated=index.generated or "")

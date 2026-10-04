@@ -24,7 +24,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "mypy>=1.10", "ruff>=0.5", "PyYAML>=6.0"]
+# Atheris publishes wheels for CPython 3.12 to 3.14 on x86_64 only (no sdist), so
+# the fuzz targets' smoke test (tests/test_fuzz_targets.py) can run only there.
+dev = [
+    "pytest>=8.0",
+    "mypy>=1.10",
+    "ruff>=0.5",
+    "PyYAML>=6.0",
+    'atheris==3.1.0; platform_machine == "x86_64" and python_version >= "3.12" and python_version < "3.15"',
+]
 
 [project.scripts]
 bunker = "bunker.cli:main"
@@ -57,7 +65,7 @@ ignore_missing_imports = true
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["src", "tests", "packaging"]
+src = ["src", "tests", "packaging", "fuzz"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM", "S", "RUF"]
@@ -70,6 +78,8 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # Tests assert, run subprocesses they wrote themselves, and bind loopback.
 "tests/*" = ["S101", "S603", "S607", "S108"]
+# Fuzz targets assert the properties they check and write only inside a temp directory they made.
+"fuzz/*" = ["S101", "S108", "SIM105", "RUF012"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
