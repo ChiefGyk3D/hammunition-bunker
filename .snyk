@@ -1,0 +1,12 @@
+# Snyk Code ignores per-rule `ignore:` entries but honours `exclude: code:`.
+version: v1.25.0
+exclude:
+  code:
+    # Build-time script, run by the image builder from the Dockerfile, never
+    # shipped as part of the service. Its only two remaining findings are LOW
+    # "Path Traversal" on DEST, an argument the operator types on their own
+    # machine (a Dockerfile RUN line): there is no trust boundary and no base
+    # directory to confine it to. The tar-extraction findings were fixed in
+    # code, and tests/test_packaging.py covers `..`, absolute and symlink
+    # members on both the filter and no-filter paths.
+    - packaging/fetch_engine.py
