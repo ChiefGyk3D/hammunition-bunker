@@ -142,3 +142,60 @@ def test_ensure_writes_an_empty_index_only_when_absent(tmp_path: Path) -> None:
     index.save(tmp_path, Index(artifacts=[an_entry()]), generated="g2")
     index.ensure(tmp_path, generated="g3")
     assert len(index.load(tmp_path).artifacts) == 1
+
+
+# Findings of the Atheris targets in fuzz/ (each input is the bytes the fuzzer found).
+
+
+def test_an_index_that_is_not_utf8_is_refused_not_a_traceback(tmp_path: Path) -> None:
+    (tmp_path / "index.json").write_bytes(b"\xc2\x00{}")
+    with pytest.raises(IndexRefused, match="not JSON"):
+        index.load(tmp_path)
+
+
+def _entry_dict() -> dict[str, Any]:
+    from dataclasses import asdict
+
+    return asdict(an_entry())
+
+
+def _doc(**over: Any) -> dict[str, Any]:
+    from dataclasses import asdict
+
+    doc: dict[str, Any] = {
+        "kind": index.KIND,
+        "version": index.INDEX_VERSION,
+        "generated": "2026-10-04T00:00:00Z",
+        "engine": {"version": "0.19.0"},
+        "artifacts": [asdict(an_entry())],
+        "deferred": [],
+        "declined": [],
+        "last_run": None,
+    }
+    doc.update(over)
+    return doc
+
+
+@pytest.mark.parametrize(
+    ("what", "over"),
+    [
+        ("deferred is a number", {"deferred": 7}),
+        ("declined is an object", {"declined": {"unit": "u"}}),
+        ("a deferred row is text", {"deferred": ["x"]}),
+        ("a deferred value is an object", {"deferred": [{"unit": {}, "reason": "r"}]}),
+        ("last_run is a list", {"last_run": [1]}),
+        ("plain_http is a number", {"last_run": {"plain_http": 3}}),
+        ("engine version is a number", {"engine": {"version": 3}}),
+        ("generated is a number", {"generated": 3}),
+        ("an entry's unit is a list", {"artifacts": [{**_entry_dict(), "unit": ["x"]}]}),
+        ("an entry's size is text", {"artifacts": [{**_entry_dict(), "size": "12"}]}),
+        ("an entry's size is a bool", {"artifacts": [{**_entry_dict(), "size": True}]}),
+        ("an entry's path is a number", {"artifacts": [{**_entry_dict(), "path": 5}]}),
+    ],
+)
+def test_a_wrong_typed_field_is_refused_by_name_not_a_traceback_later(
+    tmp_path: Path, what: str, over: dict[str, Any]
+) -> None:
+    (tmp_path / "index.json").write_text(json.dumps(_doc(**over)), encoding="utf-8")
+    with pytest.raises(IndexRefused, match="mv "):
+        index.load(tmp_path)

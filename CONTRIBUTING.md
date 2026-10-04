@@ -36,6 +36,28 @@ python3 -m venv .venv
 `editable_mode=compat` matters: mypy cannot follow setuptools' default
 editable finder, and `mypy --strict` reads the engine's types.
 
+## Fuzzing
+
+`fuzz/fuzz_*.py` are [Atheris](https://github.com/google/atheris) targets for
+what the Bunker parses: the `--json` envelope, `bunker.toml`, the engine's
+`artifacts` document, `index.json` with the status page rendered from it, and
+the server's request paths and `Range` headers. CI runs each for 30 seconds on
+a pull request and 10 minutes on Mondays, through GYST's `python-fuzz.yml`.
+Atheris has wheels for CPython 3.12 to 3.14 on x86_64 only; `.[dev]` installs it
+there. To run one:
+
+```
+.venv/bin/python fuzz/fuzz_config.py -max_total_time=60 -max_len=4096
+```
+
+A crash prints the exception and writes a `crash-<sha>` file (in CI, the
+`fuzz-findings` artifact). Turn the bytes in that file into an ordinary
+pytest test, watch it fail, fix the parser at the root cause, and keep the
+test; a parser's documented refusals (`ConfigError`, `EngineError`,
+`IndexRefused`) are caught inside the target, everything else is the bug.
+`tests/test_fuzz_targets.py` runs every target on a few seeds in the normal
+suite, so a target cannot rot unnoticed.
+
 ## What the checks hold
 
 | Check | Holds |
@@ -46,6 +68,7 @@ editable finder, and `mypy --strict` reads the engine's types.
 | `tests/test_server.py` | byte ranges, hidden paths, and Hammunition's own fetch taking a file from the server |
 | `tests/test_cli.py` | exit codes, the `--json` goldens, the scheduler as a real process |
 | `tests/test_packaging.py` | pinned actions, the image's posture, compose and quadlet agreeing, the engine fetch refusing a wrong hash |
+| `tests/test_fuzz_targets.py` | every fuzz target still runs on empty, valid, truncated and random input |
 | `tests/test_docs.py` | links, cited paths, and that the reference names every key, command and document |
 
 **A check must be falsifiable.** Before trusting a new one, break the thing

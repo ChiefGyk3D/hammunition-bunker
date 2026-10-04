@@ -210,7 +210,10 @@ def _cadences(value: Any, key: str, choices: Sequence[str]) -> dict[str, str]:
 def _engine(table: Mapping[str, Any], base: Path) -> EngineConfig:
     raw = table.get("command", "hammunition")
     if isinstance(raw, str):
-        command = tuple(shlex.split(raw))
+        try:
+            command = tuple(shlex.split(raw))
+        except ValueError:  # an unclosed quotation
+            command = ()
     elif isinstance(raw, list) and all(isinstance(p, str) for p in raw):
         command = tuple(raw)
     else:
@@ -268,12 +271,16 @@ def load(path: Path) -> Config:
         text = path.read_text(encoding="utf-8")
     except FileNotFoundError:
         raise ConfigError(f"{path} does not exist") from None
+    except UnicodeDecodeError:
+        raise ConfigError(f"{path} is not valid UTF-8; save it as UTF-8 text") from None
     except OSError as exc:
         raise ConfigError(f"{path} cannot be read: {exc.strerror or exc}") from None
     try:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:
         raise ConfigError(f"{path} is not valid TOML: {exc}") from None
+    except RecursionError:  # tomllib recurses once per nested array or table
+        raise ConfigError(f"{path} is nested too deeply to read") from None
     unknown = sorted(set(data) - set(_KNOWN))
     if unknown:
         raise ConfigError(f"unknown table {unknown[0]} in {path}; known: {', '.join(_KNOWN)}")

@@ -12,11 +12,26 @@ Notable changes, newest first. Versions follow
 
 ### Added
 
+- The GYST callers move from v1.9.0 to v1.10.0 (a no-op for the called workflows: their inputs are identical).
+- Fuzzing: Atheris targets under `fuzz/` for the `--json` envelope, `bunker.toml`,
+  the engine's `artifacts` document, `index.json` with the status page, and the
+  server's paths and ranges, run by GYST's `python-fuzz.yml` (v1.10.0) from
+  `ci.yml` on pull requests and weekly; `tests/test_fuzz_targets.py` keeps them
+  honest. See CONTRIBUTING.md.
 - The `unverified-fetch` check kind (Hammunition D-078): the on-request repeater
   lists (ETCC, Brandmeister, hearham; unit `repeater-snapshots`) are held under
   `hold_unverified`, keeping size and fetch date only, with no zip structure
   check. `bunker verify` runs the engine's structure check on `unverified-zip`
   copies alone.
+
+### Fixed
+
+- Found by the fuzz targets: a `bunker.toml` that is not UTF-8, has an unclosed
+  quotation in `engine.command`, or nests arrays about 500 deep is now a
+  `ConfigError` naming the file or key, not a traceback. An `index.json` that
+  is not UTF-8, or has a field of the wrong type (`deferred` a number, a size
+  as text, `last_run` a list), is refused by name with the move-it-aside
+  instruction, where it used to fail later in the status page or a run.
 
 ### Changed
 

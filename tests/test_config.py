@@ -156,3 +156,25 @@ def test_parse_rate(text: str, value: int) -> None:
 def test_parse_rate_refuses(text: str) -> None:
     with pytest.raises(ValueError):
         config.parse_rate(text)
+
+
+# Findings of the Atheris targets in fuzz/ (each input is the bytes the fuzzer found).
+
+
+def test_a_config_that_is_not_utf8_is_a_config_error(tmp_path: Path) -> None:
+    path = tmp_path / "bunker.toml"
+    path.write_bytes(b"\xf6\x00[serve]\n")
+    with pytest.raises(ConfigError, match="not valid UTF-8"):
+        config.load(path)
+
+
+def test_an_engine_command_with_an_unclosed_quote_is_a_config_error(tmp_path: Path) -> None:
+    path = write(tmp_path, '[engine]\ncommand = "hammunition \\"x"\n')
+    with pytest.raises(ConfigError, match=r"engine\.command"):
+        config.load(path)
+
+
+def test_a_deeply_nested_value_is_a_config_error_not_a_traceback(tmp_path: Path) -> None:
+    path = write(tmp_path, "[selection]\nunits = " + "[" * 1000 + "]" * 1000 + "\n")
+    with pytest.raises(ConfigError, match="nested too deeply"):
+        config.load(path)
