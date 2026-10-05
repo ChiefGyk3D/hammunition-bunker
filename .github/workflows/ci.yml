@@ -35,7 +35,7 @@ jobs:
       DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}   # optional Service Token fallback; unset means OIDC only
     with:
       runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
-      distros: '["debian:12", "debian:13", "ubuntu:24.04", "kalilinux/kali-rolling", "parrotsec/core"]'
+      distros: '["debian:13", "ubuntu:24.04", "ubuntu:26.04", "kalilinux/kali-rolling", "parrotsec/core"]'
       distro-runners: '["ubuntu-24.04", "ubuntu-24.04-arm"]'
       python-versions: '["3.11", "3.12", "3.13"]'
       install-command: |
