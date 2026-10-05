@@ -175,7 +175,7 @@ so: `hammunition install --dry-run` opens its data sections with a *Data
 mirror* paragraph and names both sources beside each download. To skip the
 mirror for one run, `--no-mirror`; to remove it, `--clear-mirror`. The
 engine's side is described in Hammunition's own
-[LAN mirror guide](https://github.com/ChiefGyk3D/Hammunition/blob/main/docs/guides/lan-mirror.md).
+[LAN mirror guide](https://github.com/Renegade-Penguin/Hammunition/blob/main/docs/guides/lan-mirror.md).
 
 **A mirror does not make an install work offline.** The engine still makes
 its plan against the publishers (a region's dated file and MD5 come from

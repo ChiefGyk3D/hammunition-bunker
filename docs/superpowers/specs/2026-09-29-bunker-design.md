@@ -12,7 +12,7 @@ takes its map regions, elevation tiles, reference books and the rest from the
 LAN instead of the internet, and the copy on the NAS is never trusted, only
 fast.
 
-It is a sibling of [Hammunition](https://github.com/ChiefGyk3D/Hammunition)
+It is a sibling of [Hammunition](https://github.com/Renegade-Penguin/Hammunition)
 in the sense of the separable-components rule: its own repository, its own
 release line, the engine reached only through the engine's public interfaces.
 It carries no catalog, no pins and no verification code of its own. Every

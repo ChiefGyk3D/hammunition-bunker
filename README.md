@@ -3,7 +3,7 @@
 > Your RF arsenal, stockpiled.
 
 Hammunition Bunker keeps a verified copy of
-[Hammunition](https://github.com/ChiefGyk3D/Hammunition)'s offline data on a
+[Hammunition](https://github.com/Renegade-Penguin/Hammunition)'s offline data on a
 NAS, fresh on a schedule, and serves it on your LAN. A field laptop's
 `hammunition install` then takes its map regions, elevation tiles and
 reference files from the machine in the next room instead of the internet,
