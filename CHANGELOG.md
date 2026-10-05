@@ -12,6 +12,7 @@ Notable changes, newest first. Versions follow
 
 ### Added
 
+- Code scanning, second pass: the Units table header in the status page is one parenthesised literal with its rendered text pinned by a test, and `enginelib` reads `hammunition.backends` at import (an `ImportError` if the load order is wrong) instead of holding an unread module variable.
 - The GYST callers move from v1.9.0 to v1.10.0 (a no-op for the called workflows: their inputs are identical).
 - Fuzzing: Atheris targets under `fuzz/` for the `--json` envelope, `bunker.toml`,
   the engine's `artifacts` document, `index.json` with the status page, and the

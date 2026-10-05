@@ -34,9 +34,10 @@ from hammunition.fetch import (
 )
 from hammunition.manifest.schema import RemoteArtifact
 
-# Held, not just imported: the import above must precede hammunition.fetch (see
-# the module docstring), and a name that is read is an import that is used.
-_BACKENDS_FIRST: ModuleType = hammunition.backends
+# The import above must precede hammunition.fetch (see the module docstring). Read
+# here, so the order is checked when this module loads and not only by a test.
+if not hasattr(hammunition.backends, "base"):
+    raise ImportError("hammunition.backends must load before hammunition.fetch")
 
 __all__ = [
     "DEFAULT_MAX_BYTES",
