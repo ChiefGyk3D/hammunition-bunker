@@ -12,6 +12,7 @@ Notable changes, newest first. Versions follow
 
 ### Added
 
+- Keep the suite board current: a `project-sync` caller for GYST v1.12.0 (Hammunition #362) adds this repository's issues and pull requests to the Renegade-Penguin board, sets status and done date, and reconciles weekly.
 - GYST callers to v1.12.0 (every input they pass exists in v1.12.0; v1.11.0 to v1.12.0 changed only `project-sync.yml`).
 - Code scanning, second pass: the Units table header in the status page is one parenthesised literal with its rendered text pinned by a test, and `enginelib` reads `hammunition.backends` at import (an `ImportError` if the load order is wrong) instead of holding an unread module variable.
 - The GYST callers move from v1.9.0 to v1.10.0 (a no-op for the called workflows: their inputs are identical).
