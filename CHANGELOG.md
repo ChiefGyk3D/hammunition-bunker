@@ -10,6 +10,10 @@ Notable changes, newest first. Versions follow
 
 ## [Unreleased]
 
+### Fixed
+
+- `docs/reference.md` said the on-request repeater lists are not listed by `hammunition artifacts`; the engine lists them as unit `repeater-snapshots` from v0.20.0 (D-078). The README names the latest engine release against the pinned one (#7).
+
 ### Added
 
 - Keep the suite board current: a `project-sync` caller for GYST v1.12.0 (Hammunition #362) adds this repository's issues and pull requests to the Renegade-Penguin board, sets status and done date, and reconciles weekly.
