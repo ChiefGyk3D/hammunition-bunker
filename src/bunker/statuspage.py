@@ -117,8 +117,10 @@ def render(index: Index, *, disk_used: int) -> str:
         licences.setdefault(entry.unit, entry.licence)
     out += [
         "<h2>Units</h2>",
-        '<div class="wrap"><table><thead><tr><th>Unit</th><th>Current</th><th>Stale</th>'
-        "<th>Failed</th><th>Corrupted</th><th>Size</th></tr></thead><tbody>",
+        (
+            '<div class="wrap"><table><thead><tr><th>Unit</th><th>Current</th><th>Stale</th>'
+            "<th>Failed</th><th>Corrupted</th><th>Size</th></tr></thead><tbody>"
+        ),
     ]
     for unit in sorted(per_unit):
         c = per_unit[unit]

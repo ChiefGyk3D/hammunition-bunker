@@ -135,6 +135,10 @@ def test_the_lede_and_a_unit_row_read_as_one_piece_each() -> None:
         "holds. It belongs on your LAN only: never publish its port on an "
         "interface the internet can reach.</p>"
     ) in html
+    assert (
+        '<div class="wrap"><table><thead><tr><th>Unit</th><th>Current</th><th>Stale</th>'
+        "<th>Failed</th><th>Corrupted</th><th>Size</th></tr></thead><tbody>"
+    ) in html
     row = re.search(r"<tr><td>osm-regions</td>.*?</tr>", html, re.S)
     assert row is not None
     cells = re.findall(r"<td>(.*?)</td>", row.group(0))
