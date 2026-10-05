@@ -261,4 +261,4 @@ anything else fails the run with what the engine said. An entry with a
 `check` this Bunker does not know is refused by name with the engine's
 version (see [Check kinds](#check-kinds)), not guessed at.
 The contract is Hammunition's `ArtifactsDocument`, described in its
-[JSON interface reference](https://github.com/ChiefGyk3D/Hammunition/blob/main/docs/reference/json-interface.md).
+[JSON interface reference](https://github.com/Renegade-Penguin/Hammunition/blob/main/docs/reference/json-interface.md).

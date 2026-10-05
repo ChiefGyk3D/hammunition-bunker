@@ -9,7 +9,7 @@ The latest tagged release is supported (currently v0.1.0). Fixes land on
 
 Please report security issues **privately**, not in a public issue or pull
 request. Use GitHub's private vulnerability reporting on this repository:
-[Report a vulnerability](https://github.com/ChiefGyk3D/hammunition-bunker/security/advisories/new).
+[Report a vulnerability](https://github.com/Renegade-Penguin/hammunition-bunker/security/advisories/new).
 
 Please include the affected command, file or configuration key, what you
 expected and what happened, and the steps to reproduce it. Do not include a
@@ -29,7 +29,7 @@ private.
 The Bunker serves without authentication over plain HTTP by design, for a LAN
 only; reaching it from an untrusted network is a deployment error, not a
 vulnerability. Vulnerabilities in the Hammunition engine it imports belong with
-[that project](https://github.com/ChiefGyk3D/Hammunition/security/advisories/new).
+[that project](https://github.com/Renegade-Penguin/Hammunition/security/advisories/new).
 
 ## What to expect
 

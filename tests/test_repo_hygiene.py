@@ -77,7 +77,7 @@ def test_engine_floor_agrees() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     pins = [d for d in project["dependencies"] if d.startswith("hammunition")]
     assert pins == [
-        f"hammunition @ git+https://github.com/ChiefGyk3D/Hammunition@v{bunker.ENGINE_FLOOR}"
+        f"hammunition @ git+https://github.com/Renegade-Penguin/Hammunition@v{bunker.ENGINE_FLOOR}"
     ]
     dockerfile = ROOT / "Dockerfile"
     if dockerfile.exists():

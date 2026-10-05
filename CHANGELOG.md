@@ -37,6 +37,7 @@ Notable changes, newest first. Versions follow
 
 ### Changed
 
+- The project moved from the `ChiefGyk3D` user to the `Renegade-Penguin` organization (Hammunition #359, epic #357): every suite repository URL, badge and link now points at the organization.
 - `index.json` is version 2, with a separate persisted `declined` list so
   status identifies artifacts declined by configuration rather than by the
   engine. Version-1 indexes upgrade without reclassifying their `deferred`

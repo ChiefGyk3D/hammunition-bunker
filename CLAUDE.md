@@ -1,6 +1,6 @@
 # Hammunition Bunker — Claude Code Context
 
-A verified LAN mirror of [Hammunition](https://github.com/ChiefGyk3D/Hammunition)'s
+A verified LAN mirror of [Hammunition](https://github.com/Renegade-Penguin/Hammunition)'s
 offline data, for a NAS. A sibling of Hammunition under the separable-
 components rule: its own repository, its own releases, the engine reached
 only through its public interfaces.
