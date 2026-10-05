@@ -100,7 +100,7 @@ def test_a_canned_document_parses(tmp_path: Path, fake_engine: FakeEngine) -> No
         )
     )
     listing = engine.ask_engine(cfg(tmp_path))
-    assert listing.engine_version == "0.19.0"
+    assert listing.engine_version == "0.21.0"
     assert [a.name for a in listing.artifacts] == ["cty.dat", "north-america/us/vermont"]
     region = listing.artifacts[1]
     assert region.check == "md5-publisher"
@@ -187,7 +187,7 @@ def test_an_error_document_carries_its_message(tmp_path: Path, fake_engine: Fake
         {
             "schema": "hammunition/1",
             "kind": "error",
-            "engine": "0.19.0",
+            "engine": "0.21.0",
             "command": "artifacts",
             "exit_code": 2,
             "message": "could not find the catalog",
@@ -277,3 +277,20 @@ def test_a_name_listed_twice_with_different_bytes_is_deferred(
     listing = engine.ask_engine(cfg(tmp_path))
     assert [a.url for a in listing.artifacts] == ["https://p/a"]
     assert "listed twice" in listing.deferred[0].reason
+
+
+def test_the_real_v0_21_0_repeater_snapshot_rows_are_listed_not_refused() -> None:
+    """Captured from ``hammunition artifacts --units repeater-snapshots --json``
+    on the pinned v0.21.0 engine (D-078): three rows, check ``unverified-fetch``,
+    no digest, and here no size (the publishers state none on a HEAD)."""
+    text = (Path(__file__).parent / "data" / "engine-v0.21.0-repeater-snapshots.json").read_text(
+        encoding="utf-8"
+    )
+    listing = engine._parse(text)
+    assert listing.engine_version == "0.21.0" and listing.warnings == ()
+    assert listing.deferred == ()
+    assert [(a.unit, a.name, a.check, a.digest, a.size) for a in listing.artifacts] == [
+        ("repeater-snapshots", "etcc.csv", "unverified-fetch", None, None),
+        ("repeater-snapshots", "brandmeister.json", "unverified-fetch", None, None),
+        ("repeater-snapshots", "hearham.json", "unverified-fetch", None, None),
+    ]

@@ -22,10 +22,9 @@ Everything below is built and covered by the test suite, which runs the
 Bunker against a fake engine and a publisher on loopback. Three things are
 not yet true, and each is waiting on something named:
 
-- **The engine is Hammunition v0.19.0**, tagged and pinned
-  (`hammunition artifacts` and the LAN mirror, D-070, and the check kinds
-  that release emits). The latest engine release is v0.21.0; the on-request
-  repeater lists below are listed from v0.20.0, so they need the pin to move.
+- **The engine is Hammunition v0.21.0**, tagged and pinned
+  (`hammunition artifacts` and the LAN mirror, D-070, and every check kind
+  the document can emit).
 - **The image has never been built.** The Dockerfile refuses to build until
   the engine release's sha256 is filled in, which happens when both are
   released.
@@ -78,7 +77,7 @@ for it and nothing is skipped quietly.
 
 Whatever the check, every file gets a sha256 sidecar of its bytes, so the
 volume is re-hashed one way. `sha1-publisher` and `unverified-zip` need an
-engine newer than `v0.16.0`; the pinned `v0.19.0` has both, and on an older
+engine newer than `v0.16.0`; the pinned `v0.21.0` has both, and on an older
 one that lacks the method the artifact fails by name, saying which method is missing, and nothing is
 downloaded. An engine newer than the release this Bunker's table was written
 against is named in the run and by `bunker doctor`.

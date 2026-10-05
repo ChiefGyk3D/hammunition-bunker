@@ -24,6 +24,10 @@ behaviour; where a step is a guess about a NAS's defaults, it says so.
   terrain alone can be several gigabytes; a region's map is tens to hundreds
   of megabytes.
 - The laptop running Hammunition 0.19.0 or later (`hammunition --version`).
+  The on-request repeater lists (unit `repeater-snapshots`, held under
+  `hold_unverified`) are listed only by v0.21.0 or later; on an older engine
+  a Bunker holds none, and `units = ["repeater-snapshots"]` is refused by the
+  engine by name.
   Selecting reference books (`selection.reference_books` below) needs the
   release that carries #178 (v0.19.0 does, so every selection works on it).
 

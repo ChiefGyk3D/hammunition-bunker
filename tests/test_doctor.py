@@ -36,7 +36,7 @@ def test_all_good(tmp_path: Path, fake_engine: FakeEngine) -> None:
     report = doctor.doctor(cfg(tmp_path, free_port()))
     assert report.ok, report.checks
     assert set(by_name(report)) == {"config", "engine", "volume", "unverified", "port"}
-    assert "0.19.0" in by_name(report)["engine"].detail
+    assert "0.21.0" in by_name(report)["engine"].detail
 
 
 def test_an_engine_below_the_floor(tmp_path: Path, fake_engine: FakeEngine) -> None:

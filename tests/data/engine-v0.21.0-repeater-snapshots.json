@@ -1,0 +1,46 @@
+{
+  "schema": "hammunition/1",
+  "kind": "artifacts",
+  "engine": "0.21.0",
+  "map_regions": [],
+  "map_freshness": "yearly",
+  "reference_books": [],
+  "units": [
+    "repeater-snapshots"
+  ],
+  "artifacts": [
+    {
+      "unit": "repeater-snapshots",
+      "name": "etcc.csv",
+      "url": "https://ukrepeater.net/csvcreate_all.php",
+      "check": "unverified-fetch",
+      "digest": null,
+      "checksum_url": null,
+      "size": null,
+      "licence": "RSGB ETCC (ukrepeater.net): no licence stated for a list its CSV page offers openly; D-033's position, fetched on request, never redistributed by the project; an operator's own Bunker may hold it for their LAN",
+      "deferred": null
+    },
+    {
+      "unit": "repeater-snapshots",
+      "name": "brandmeister.json",
+      "url": "https://api.brandmeister.network/v2/device",
+      "check": "unverified-fetch",
+      "digest": null,
+      "checksum_url": null,
+      "size": null,
+      "licence": "BrandMeister: no terms published for the device API; D-033's position, fetched on request, never redistributed by the project; hotspots are personal locations and are dropped on import; an operator's own Bunker may hold it for their LAN",
+      "deferred": null
+    },
+    {
+      "unit": "repeater-snapshots",
+      "name": "hearham.json",
+      "url": "https://hearham.com/api/repeaters/v1",
+      "check": "unverified-fetch",
+      "digest": null,
+      "checksum_url": null,
+      "size": null,
+      "licence": "hearham.com: no data licence stated; D-033's position, fetched on request, never redistributed by the project; an operator's own Bunker may hold it for their LAN",
+      "deferred": null
+    }
+  ]
+}

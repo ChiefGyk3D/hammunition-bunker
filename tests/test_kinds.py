@@ -110,7 +110,7 @@ class Bench:
         )
         return config.load(path)
 
-    def list(self, entries: list[dict[str, Any]], *, engine_version: str = "0.19.0") -> None:
+    def list(self, entries: list[dict[str, Any]], *, engine_version: str = "0.21.0") -> None:
         self.engine.set_doc(artifacts_doc(entries, engine=engine_version))
 
     def run(self, **kw: Any) -> run.RunReport:

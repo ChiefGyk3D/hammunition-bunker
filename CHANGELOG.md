@@ -42,6 +42,7 @@ Notable changes, newest first. Versions follow
 
 ### Changed
 
+- The engine pin is Hammunition v0.21.0 (was v0.19.0, #30): `ENGINE_CONTRACT`, `pyproject.toml`, the Dockerfile (tag and the tag archive's sha256, whose embedded commit is the tag's 383f9e3) and the live workflow's ref. The pinned engine lists unit `repeater-snapshots` with check `unverified-fetch` (D-078), which the check table already held; `ENGINE_FLOOR` stays v0.19.0, because the Bunker needs no engine method v0.19.0 lacks (an older engine lists no snapshots). `tests/test_repo_hygiene.py` now holds the contract, the pyproject pin and the image together, and asserts the floor is not above them.
 - The project moved from the `ChiefGyk3D` user to the `Renegade-Penguin` organization (Hammunition #359, epic #357): every suite repository URL, badge and link now points at the organization.
 - `index.json` is version 2, with a separate persisted `declined` list so
   status identifies artifacts declined by configuration rather than by the
