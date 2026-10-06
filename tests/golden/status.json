@@ -2,7 +2,7 @@
   "schema": "bunker/1",
   "kind": "status",
   "engine": "<bunker version>",
-  "engine_version": "0.19.0",
+  "engine_version": "0.21.0",
   "generated": "2026-09-29T03:00:00Z",
   "last_run": {
     "started": "2026-09-29T03:00:00Z",

@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 import bunker
+from bunker import engine
 from tests.conftest import NetworkBlocked
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -72,18 +73,22 @@ def test_nothing_tracked_is_ignored() -> None:
 
 
 def test_engine_floor_agrees() -> None:
-    """One engine version, three places: the code's floor, the pyproject pin
-    and the image's build argument."""
+    """One engine release pinned, three places: the code's contract, the
+    pyproject pin and the image's build argument. The floor is separate (the
+    oldest engine the Bunker works with) and may not exceed the pin."""
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     pins = [d for d in project["dependencies"] if d.startswith("hammunition")]
     assert pins == [
-        f"hammunition @ git+https://github.com/Renegade-Penguin/Hammunition@v{bunker.ENGINE_FLOOR}"
+        f"hammunition @ git+https://github.com/Renegade-Penguin/Hammunition@v{bunker.ENGINE_CONTRACT}"
     ]
     dockerfile = ROOT / "Dockerfile"
     if dockerfile.exists():
         found = re.search(r"^ARG ENGINE_VERSION=(\S+)$", dockerfile.read_text(), re.M)
         assert found is not None, "the Dockerfile names no ENGINE_VERSION"
-        assert found.group(1) == bunker.ENGINE_FLOOR
+        assert found.group(1) == bunker.ENGINE_CONTRACT
+    assert engine.meets_floor(bunker.ENGINE_CONTRACT, bunker.ENGINE_FLOOR), (
+        "ENGINE_FLOOR is above ENGINE_CONTRACT: the pinned engine would fail bunker doctor"
+    )
 
 
 def test_version_is_single_sourced() -> None:

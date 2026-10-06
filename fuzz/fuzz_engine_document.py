@@ -64,7 +64,7 @@ def _document(fdp: atheris.FuzzedDataProvider) -> str:
         if fdp.ConsumeIntInRange(0, 9)
         else fdp.ConsumeUnicodeNoSurrogates(8),
         "kind": "artifacts" if fdp.ConsumeIntInRange(0, 9) else fdp.ConsumeUnicodeNoSurrogates(8),
-        "engine": _opt(fdp, "0.19.0"),
+        "engine": _opt(fdp, "0.21.0"),
         "artifacts": [_item(fdp) for _ in range(fdp.ConsumeIntInRange(0, 5))],
     }
     if fdp.ConsumeIntInRange(0, 12) == 0:

@@ -20,7 +20,7 @@ keywords = ["ham-radio", "amateur-radio", "mirror", "offline", "nas"]
 # release with `hammunition artifacts` and the LAN mirror (D-070). For
 # development against an unreleased engine, see CONTRIBUTING.md.
 dependencies = [
-    "hammunition @ git+https://github.com/Renegade-Penguin/Hammunition@v0.19.0",
+    "hammunition @ git+https://github.com/Renegade-Penguin/Hammunition@v0.21.0",
 ]
 
 [project.optional-dependencies]

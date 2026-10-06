@@ -136,7 +136,7 @@ artifacts document this table was written against) adds a note to the run's
 `warnings` and to `bunker doctor`; that alone is not a failure.
 
 `sha1-publisher` and `unverified-zip` need an engine newer than v0.16.0;
-the pinned floor (`ENGINE_FLOOR`, v0.19.0) has both. On an older engine the
+the floor (`ENGINE_FLOOR`, v0.19.0) has both. The pin (`ENGINE_CONTRACT`, v0.21.0) is the release the image installs; it adds the `repeater-snapshots` unit (D-078), which an older engine does not list. On an older engine the
 artifact fails by name when the installed engine lacks `Fetcher.fetch_sha1`, `Fetcher.fetch_checked` or
 `hammunition.acma`, and nothing is downloaded.
 

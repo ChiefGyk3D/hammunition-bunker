@@ -74,7 +74,7 @@ def _document(fdp: atheris.FuzzedDataProvider) -> bytes:
         "kind": index.KIND if fdp.ConsumeIntInRange(0, 15) else "other",
         "version": version if fdp.ConsumeIntInRange(0, 15) else _val(fdp, 2),
         "generated": _val(fdp, "2026-10-04T00:00:00Z"),
-        "engine": _val(fdp, {"version": "0.19.0"}),
+        "engine": _val(fdp, {"version": "0.21.0"}),
         "artifacts": [_entry(fdp) for _ in range(fdp.ConsumeIntInRange(0, 4))],
         "deferred": _val(fdp, [{"unit": "u", "name": None, "reason": "r"}]),
         "declined": _val(fdp, [{"unit": "u", "name": "n", "reason": "r"}]),

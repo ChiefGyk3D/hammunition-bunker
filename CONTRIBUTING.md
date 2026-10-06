@@ -82,13 +82,16 @@ before committing it.
 ## Cutting a release
 
 1. The engine release the Bunker pins must exist. Its version is in three
-   places, held together by a test: `bunker.ENGINE_FLOOR`, the pin in
+   places, held together by a test: `bunker.ENGINE_CONTRACT`, the pin in
    `pyproject.toml`, and `ENGINE_VERSION` in the `Dockerfile`.
+   `bunker.ENGINE_FLOOR` (the oldest engine the Bunker works with) is
+   separate and moves only when the Bunker needs something an older engine
+   lacks.
 2. Fill `ENGINE_SHA256` in the `Dockerfile` with the sha256 of the bytes at
    `ENGINE_URL`:
 
    ```
-   curl -fLo engine.tar.gz https://github.com/Renegade-Penguin/Hammunition/archive/refs/tags/v0.19.0.tar.gz
+   curl -fLo engine.tar.gz https://github.com/Renegade-Penguin/Hammunition/archive/refs/tags/v0.21.0.tar.gz
    sha256sum engine.tar.gz
    ```
 

@@ -41,7 +41,7 @@ def test_absent_is_empty(tmp_path: Path) -> None:
 
 def test_round_trip(tmp_path: Path) -> None:
     idx = Index(
-        engine_version="0.19.0",
+        engine_version="0.21.0",
         artifacts=[an_entry()],
         deferred=[{"unit": "kiwix-library", "name": None, "reason": "no books selected"}],
         declined=[{"unit": "acma-register", "name": "spectra_rrl.zip", "reason": "disabled"}],
@@ -52,7 +52,7 @@ def test_round_trip(tmp_path: Path) -> None:
     assert raw["kind"] == "bunker-index"
     assert raw["version"] == 2
     assert raw["generated"] == "2026-09-29T23:00:00Z"
-    assert raw["engine"] == {"version": "0.19.0"}
+    assert raw["engine"] == {"version": "0.21.0"}
     assert raw["artifacts"][0]["status"] == "current"
     loaded = index.load(tmp_path)
     assert loaded.artifacts == [an_entry()]
@@ -166,7 +166,7 @@ def _doc(**over: Any) -> dict[str, Any]:
         "kind": index.KIND,
         "version": index.INDEX_VERSION,
         "generated": "2026-10-04T00:00:00Z",
-        "engine": {"version": "0.19.0"},
+        "engine": {"version": "0.21.0"},
         "artifacts": [asdict(an_entry())],
         "deferred": [],
         "declined": [],
