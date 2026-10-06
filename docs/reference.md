@@ -250,11 +250,17 @@ or changing one bumps the major. `tests/golden/` holds an example of each.
 hammunition [--catalog DIR] artifacts --json --map-freshness F [--map-regions R,...] [--reference-books ID,...] [--units U,...]
 ```
 
-The engine can fetch the hearham, ETCC and Brandmeister repeater lists on
-request, but they are not listed by `hammunition artifacts`; neither are the
-FCC tower file or NOAA Weather Radio (NWR) list. The Bunker therefore has
-nothing to select for these, and whether it may keep copies has not been
-decided.
+With no `--units` the engine lists every fetching catalog unit and then
+`repeater-snapshots` (the engine's `select_units`, D-078): the ETCC, Brandmeister and hearham repeater lists, `etcc.csv`,
+`brandmeister.json` and `hearham.json`, each `unverified-fetch`. `selection.units`
+may name `repeater-snapshots`. This listing first appears in Hammunition
+v0.20.0; the engine this Bunker pins (v0.19.0) does not emit it, so a Bunker on
+that pin holds no snapshots until the pin moves. These are the only on-request
+lists a Bunker is offered: the FCC tower file and the NOAA Weather Radio (NWR)
+list are not listed, and the RepeaterBook layer is never listed or mirrored
+(D-081; a Bunker must not hold it, even on a LAN). A held snapshot is read by
+the engine's `maps repeaters fetch-etcc`, `fetch-brandmeister` and
+`fetch-hearham`, which ask `<mirror>/repeater-snapshots/<name>` first.
 
 The answer must be one `artifacts` document with schema `hammunition/1`;
 anything else fails the run with what the engine said. An entry with a

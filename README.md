@@ -23,8 +23,9 @@ Bunker against a fake engine and a publisher on loopback. Three things are
 not yet true, and each is waiting on something named:
 
 - **The engine is Hammunition v0.19.0**, tagged and pinned
-  (`hammunition artifacts` and the LAN mirror, D-070, and every check kind
-  the document can emit).
+  (`hammunition artifacts` and the LAN mirror, D-070, and the check kinds
+  that release emits). The latest engine release is v0.21.0; the on-request
+  repeater lists below are listed from v0.20.0, so they need the pin to move.
 - **The image has never been built.** The Dockerfile refuses to build until
   the engine release's sha256 is filled in, which happens when both are
   released.
