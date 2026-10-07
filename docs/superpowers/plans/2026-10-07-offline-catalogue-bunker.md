@@ -7782,3 +7782,16 @@ Where Plan A leaves something undefined that Plan B needs, nothing is guessed ab
 6. **Licences for git pins.** `GitPinEntry` has no licence field; the Bunker records the unit's licence line when an artifact of the same unit carries one, else "licence not recorded in this manifest".
 7. **Importing `hammunition.gitbundles` on its own.** The Bunker imports it lazily after `hammunition.backends` (the existing import-order rule of `enginelib`); Plan A notes the backend cycle for `fetch_bundle` but not whether the module imports cleanly in that order.
 8. **Whether `hammunition.catalogue.parse` accepts what an empty fresh Bunker publishes** (no artifacts, no inputs, `engine_version` null). The reader model reads as if it does; the first publish on a new volume is the case.
+
+## Resolved by the lead (2026-10-07), overriding "Needs from Plan A"
+
+Plan A and the contract were amended (Hammunition PR #390, commit after 27ab4e34):
+
+1. Sheets: `check: "etag-md5"`, `digest` = the raw ETag as the repo carries it (32 hex, or `<hex>-<parts>` multipart), plus `part_size` (int or null). Task 5 uses these.
+2. Missing catalogue refuses with exactly: "no catalogue at <url>/catalogue.json: <reason>. Enrol a Bunker that serves one, or run without --offline." Task 10 asserts this text.
+3. Task 10's offline install uses the static pinned data unit `ics-forms`, which needs no station regions, under the test's isolated prefix.
+4. `artifacts --json` refuses an inline input over 8 MiB, naming it and suggesting `--units`.
+5. `--units` filters `inputs` (by the selected units' regions) and `git_pins` (by unit).
+6. Every `git_pins` entry carries `licence` (verbatim from the manifest, or "licence not recorded in this manifest").
+7. Plan A Task 15 tests that `hammunition.gitbundles` imports cleanly in a fresh interpreter.
+8. `parse` accepts `artifacts: []` and `inputs: []`; `signers` still needs ≥ 1. A fresh Bunker's first signed catalogue is valid.
