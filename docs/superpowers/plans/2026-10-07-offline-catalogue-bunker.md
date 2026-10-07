@@ -12,7 +12,7 @@
 
 **Contract:** `docs/superpowers/plans/2026-10-07-offline-bunker-contract.md` in Renegade-Penguin/Hammunition (checkout: `/home/chiefgyk3d/src/Hammunition-offline-bunker/docs/superpowers/plans/2026-10-07-offline-bunker-contract.md`); binding, not edited here.
 
-**Depends on:** Plan A release (the engine release that ships `hammunition.catalogue`, `hammunition.keystrength`, `hammunition.signers`, the expanded `artifacts --json` of Plan A task A10, `--offline` and `mirror enrol`). This plan assumes it is tagged `v0.22.0`; if it is another number, substitute it in Task 11. Tasks 1 to 10 are written and tested against a local checkout of the Plan A branch installed per CONTRIBUTING.md ("Developing against an unreleased engine"); tests that need a Plan A module go through `tests/plan_a.py` (skip until Task 11 turns the skip into a failure).
+**Depends on:** Plan A (`/home/chiefgyk3d/src/Hammunition-offline-bunker/docs/superpowers/plans/2026-10-07-offline-bunker-engine.md`, 19 tasks), released: the engine release that contains Plan A (`hammunition.catalogue`, `hammunition.keystrength`, `hammunition.signers`, `hammunition.gitbundles`, the `inputs` and `git_pins` arrays of `artifacts --json`, `mirror enrol`, `install --offline`). The tag is decided at release (Plan A ships in v0.22.0 only if nothing else claims that number): Task 11 holds the number in one shell variable, `ENGINE`, and nothing else in this plan depends on it. Tasks 1 to 10 are written and tested against a local checkout of the Plan A branch installed per CONTRIBUTING.md ("Developing against an unreleased engine"); tests that need a Plan A module go through `tests/plan_a.py` (skip until Task 11 turns the skip into a failure). Every engine name, signature and message this plan relies on was read in Plan A; what Plan A leaves undefined and Plan B needs is listed under "Needs from Plan A" at the end.
 
 ## Global Constraints
 
@@ -49,10 +49,10 @@ The index document gains `serial`, `bunker`, `signers`, `inputs` and, per artifa
 - Test: `tests/test_index.py` (edits at lines 51, 55, 67, 83-84, 90, 104-106, 117-129, 139-144, 169), `tests/test_config.py`, `tests/test_publish.py`, `tests/test_run.py` (47-48), `tests/test_server.py` (169-194), `tests/test_kinds.py` (319), `tests/test_volume.py` (41), `tests/conftest.py`, `tests/helpers.py`
 
 **Interfaces:**
-- Consumes: `bunker.volume.write_atomic(path: Path, data: bytes) -> None`; `bunker.config` (`Config`, `ConfigError`, `_choice`); `hammunition.catalogue.parse(data: bytes)` in tests only (Plan A; the contract names `parse()` and does not give its argument type, so `tests/plan_a.py::parse_catalogue` is the one place that assumes `bytes`).
+- Consumes: `bunker.volume.write_atomic(path: Path, data: bytes) -> None`; `bunker.config` (`Config`, `ConfigError`, `_choice`); `hammunition.catalogue.parse(raw: bytes) -> Catalogue` in tests and in `enginelib.validate_catalogue` (Plan A Task 1), which raises `CatalogueError(ValueError)` naming the offending field (`signers`, `artifacts[0].share`, ...) and refuses, among other things, a signer whose `id`, `algorithm` or `bits` is not what `classify(public_key)` says, a `publisher_name` without a `publisher_size` (or the reverse, or a size of zero), an input whose `path` is not `inputs/<kind>/<name>`, and duplicate `(kind, region)` inputs.
 - Produces (all in `bunker.index` unless noted):
   - `INDEX_VERSION: int = 3`, `FILE = "catalogue.json"`, `LEGACY_FILE = "index.json"`, `STATE = ".state.json"`, `SERIAL_FILE = ".serial"`, `INPUT_KINDS: tuple[str, ...]`
-  - `@dataclass(frozen=True) class Signer: id: str; public_key: str; algorithm: str; bits: int; hardware: bool; signature: str`
+  - `@dataclass(frozen=True) class Signer: id: str; public_key: str; algorithm: str; bits: int; hardware: bool; signature: str; no_touch_required: bool = False`
   - `@dataclass class Input: kind: str; region: str; name: str; path: str; sha256: str; size: int; fetched: str`
   - `Entry` gains `publisher_name: str | None = None`, `publisher_size: int | None = None`, `share: str = "all"`
   - `Index` gains `serial: int = 0`, `name: str = "bunker"`, `mode: str = "personal"`, `signers: list[dict[str, Any]]`, `inputs: list[Input]`
@@ -64,7 +64,7 @@ The index document gains `serial`, `bunker`, `signers`, `inputs` and, per artifa
   - `bunker.config.MODES: tuple[str, ...]`, `BunkerConfig(name: str, mode: str)`, `Config.bunker: BunkerConfig`
   - `bunker.publish.PublishResult(published: bool, serial: int, signed_by: tuple[str, ...] = (), skipped: tuple[tuple[str, str], ...] = ())`, `publish(cfg: Config, idx: Index, *, generated: str) -> PublishResult`, `ensure_published(cfg: Config, *, generated: str) -> None`
   - `bunker.enginelib.catalogue_module() -> ModuleType`, `bunker.enginelib.validate_catalogue(data: bytes) -> None`
-  - `tests.plan_a.module(name) -> ModuleType`, `optional(name) -> ModuleType | None`, `parse_catalogue(data: bytes) -> Any`, `REQUIRE_PLAN_A: bool`
+  - `tests.plan_a.module(name) -> ModuleType`, `optional(name) -> ModuleType | None`, `parse_catalogue(data: bytes) -> Any`, `catalogue_error() -> type[Exception]`, `REQUIRE_PLAN_A: bool`
   - `tests.helpers.FAKE_PUBLIC`, `FAKE_ID`, `FAKE_SK_PUBLIC`, `FAKE_SK_ID`
 
 - [ ] **Step 1: The Plan A access seam and the fixture keys (no behaviour yet)**
@@ -112,9 +112,15 @@ def module(name: str) -> ModuleType:
 
 
 def parse_catalogue(data: bytes) -> Any:
-    """The engine's own reader. The contract says ``parse()`` and does not say
-    what it takes; the bytes are what the signatures cover, so bytes."""
+    """The engine's own reader: ``hammunition.catalogue.parse(raw: bytes) -> Catalogue``
+    (Plan A Task 1); the bytes are what the signatures cover."""
     return module("hammunition.catalogue").parse(data)
+
+
+def catalogue_error() -> type[Exception]:
+    """``hammunition.catalogue.CatalogueError``, a ``ValueError`` whose message names the field."""
+    error: type[Exception] = module("hammunition.catalogue").CatalogueError
+    return error
 ```
 
 Append to `tests/helpers.py` (the fingerprints were measured with `ssh-keygen -l`; the keys are throw-away fixtures whose private halves were discarded, and the second is a hand-built `sk-ssh-ed25519` public blob, not a real token):
@@ -214,7 +220,7 @@ Add the new tests at the end of the file:
 ```python
 def test_round_trip_keeps_the_v3_fields(tmp_path: Path) -> None:
     idx = Index(
-        engine_version="0.22.0",
+        engine_version="0.0.1",
         artifacts=[
             an_entry(
                 publisher_name="monaco-260101.osm.pbf",
@@ -266,7 +272,7 @@ def index_doc(**over: Any) -> dict[str, Any]:
         "generated": "2026-10-04T00:00:00Z",
         "bunker": {"name": "bunker", "mode": "personal"},
         "signers": [],
-        "engine_version": "0.22.0",
+        "engine_version": "0.0.1",
         "artifacts": [],
         "inputs": [],
         "deferred": [],
@@ -321,10 +327,10 @@ def test_a_garbled_serial_file_does_not_lower_the_serial(tmp_path: Path) -> None
 
 @pytest.mark.parametrize("what", ["empty", "full", "group", "upgraded"])
 def test_every_rendered_document_passes_the_engines_reader(tmp_path: Path, what: str) -> None:
-    idx = Index(engine_version="0.22.0")
+    idx = Index(engine_version="0.0.1")
     if what == "full":
         idx.artifacts = [an_entry(publisher_name="x.osm.pbf", publisher_size=1)]
-        idx.inputs = [an_input(), an_input(kind="tile-selection", name="europe/monaco.json")]
+        idx.inputs = [an_input(), an_input(kind="tile-selection", name="europe/monaco.tiles", path="inputs/tile-selection/europe/monaco.tiles")]
         idx.deferred = [{"unit": "kiwix-library", "name": None, "reason": "no books selected"}]
         idx.last_run = {"started": "s", "finished": "f", "fetched": 1, "failed": 0}
     if what == "group":
@@ -340,7 +346,7 @@ def test_every_rendered_document_passes_the_engines_reader(tmp_path: Path, what:
 def test_the_engines_reader_refuses_a_catalogue_with_no_signer(tmp_path: Path) -> None:
     """Falsification of the test above: the reader does reject a bad document."""
     data = index.render(Index(), serial=3, generated="2026-10-07T12:00:00Z", signers=[])
-    with pytest.raises(Exception, match="signers"):
+    with pytest.raises(plan_a.catalogue_error(), match="signers"):
         plan_a.parse_catalogue(data)
 ```
 
@@ -557,6 +563,10 @@ class Signer:
     hardware: bool
     signature: str
     """Relative path of its signature, ``catalogue.sig.d/<n>.sig``."""
+    no_touch_required: bool = False
+    """True only for an ``sk-*`` key made with ``-O no-touch-required``. Display
+    only: OpenSSH's allowed-signers format has no touch option, so the engine
+    shows it and never writes it (contract, amended 2026-10-07)."""
 
 
 @dataclass
@@ -1098,7 +1108,7 @@ Apply with exact edits:
   ```
   and add `from bunker.index import FILE, STATE` beside line 31.
 - `tests/test_volume.py` line 41: add `("catalogue.json", "x"),` under `("index.json", "x"),`.
-- `fuzz/fuzz_server_paths.py` line 29: `_ROOT / "index.json"` becomes `_ROOT / "catalogue.json"`. `fuzz/fuzz_index_status.py`: in `_entry` add after `"previous": _val(fdp, None),` the three lines `"publisher_name": _val(fdp, None), "publisher_size": _val(fdp, None), "share": _val(fdp, "all"),`; in `_document` replace the `"engine": ...` line with `"engine_version": _val(fdp, "0.22.0"),` and add `"serial": _val(fdp, 1), "bunker": _val(fdp, {"name": "bunker", "mode": "personal"}), "signers": _val(fdp, []), "inputs": _val(fdp, []),`; change `version = index.INDEX_VERSION if ...` unchanged; line 90 `_ROOT / "index.json"` becomes `_ROOT / index.FILE`.
+- `fuzz/fuzz_server_paths.py` line 29: `_ROOT / "index.json"` becomes `_ROOT / "catalogue.json"`. `fuzz/fuzz_index_status.py`: in `_entry` add after `"previous": _val(fdp, None),` the three lines `"publisher_name": _val(fdp, None), "publisher_size": _val(fdp, None), "share": _val(fdp, "all"),`; in `_document` replace the `"engine": ...` line with `"engine_version": _val(fdp, "0.0.1"),` and add `"serial": _val(fdp, 1), "bunker": _val(fdp, {"name": "bunker", "mode": "personal"}), "signers": _val(fdp, []), "inputs": _val(fdp, []),`; change `version = index.INDEX_VERSION if ...` unchanged; line 90 `_ROOT / "index.json"` becomes `_ROOT / index.FILE`.
 
 - [ ] **Step 12: The publish tests and the every-publication guard**
 
@@ -1462,7 +1472,7 @@ B = fake_key(  # a security key that needs a touch
 
 
 def idx() -> Index:
-    return Index(name="shack-1", engine_version="0.22.0", artifacts=[an_entry()])
+    return Index(name="shack-1", engine_version="0.0.1", artifacts=[an_entry()])
 
 
 def changed() -> Index:
@@ -1510,9 +1520,25 @@ def test_one_signature_per_key_and_the_catalogue_names_them(
         "catalogue.sig.d/2.sig",
     ]
     assert document["signers"][1]["hardware"] is True
+    assert [s["no_touch_required"] for s in document["signers"]] == [False, False]
     for n, key in enumerate([A, B], 1):
         assert (tmp_path / f"catalogue.sig.d/{n}.sig").read_bytes() == FakeBackend.signature(key, data)
     plan_a.parse_catalogue(data)
+
+
+def test_a_no_touch_security_key_is_shown_as_such_and_signs_with_the_unattended_keys(
+    tmp_path: Path, fake_backend: FakeBackend
+) -> None:
+    """`no_touch_required` is display metadata for the laptop (the contract, amended
+    2026-10-07: OpenSSH's allowed-signers format has no touch option, so the engine
+    never writes it); here it also means the key signs unattended, so it is not
+    saved for last."""
+    quiet = dataclasses.replace(B, no_touch=True)
+    result = go(tmp_path, idx(), [quiet, A])
+    assert result.signed_by == (quiet.id, A.id), "registry order among keys that need no touch"
+    document = json.loads((tmp_path / index.FILE).read_text())
+    assert [s["no_touch_required"] for s in document["signers"]] == [True, False]
+    plan_a.parse_catalogue((tmp_path / index.FILE).read_bytes())
 
 
 def test_an_unplugged_key_is_dropped_and_the_others_sign(
@@ -1835,7 +1861,7 @@ def test_an_end_to_end_publication_with_two_real_keys_verifies_like_a_laptop(tmp
     path = tmp_path / "bunker.toml"
     path.write_text(config_text(str(root), extra='[bunker]\nname = "shack-1"\n'))
     cfg = config.load(path)
-    idx = Index(engine_version="0.22.0", artifacts=[an_entry()])
+    idx = Index(engine_version="0.0.1", artifacts=[an_entry()])
     result = publish.publish(cfg, idx, generated="2026-10-07T12:00:00Z")
     assert result.signed_by == (first.id, second.id), "registry order"
     data = (root / index.FILE).read_bytes()
@@ -2303,6 +2329,7 @@ def _signer(key: KeySpec, n: int) -> index.Signer:
         bits=key.bits,
         hardware=key.hardware,
         signature=f"{SIG_DIR}/{n}.sig",
+        no_touch_required=key.no_touch and key.backend == "security-key",
     )
 
 
@@ -2636,7 +2663,7 @@ it changed, a key changed, or it is a week old."
 - Test: `tests/test_keys.py` (real `ssh-keygen`, stub runners for tokens), `tests/test_config.py`, `tests/test_doctor.py`, `tests/test_cli.py`, `tests/test_packaging.py`
 
 **Interfaces:**
-- Consumes: `bunker.signing` (`KeySpec`, `load_registry`, `save_registry`, `load_signed`, `keys_dir`, `fingerprint`, `clean_public_key`, `run_command`, `Runner`, `SigningError`, `PublishFailed`, `BACKEND_NAMES`), `bunker.publish.publish`, `bunker.volume.RunLock`, `hammunition.keystrength.classify(public_key_line)` returning an object with `algorithm`, `bits`, `hardware_by_type`, `rank`, `weak`, `warning` (the contract; how it refuses DSA is not specified, so `describe` turns any exception into `KeyManagementError`).
+- Consumes: `bunker.signing` (`KeySpec`, `load_registry`, `save_registry`, `load_signed`, `keys_dir`, `fingerprint`, `clean_public_key`, `run_command`, `Runner`, `SigningError`, `PublishFailed`, `BACKEND_NAMES`), `bunker.publish.publish`, `bunker.volume.RunLock`, `hammunition.keystrength.classify(public_key_line: str) -> KeyStrength(algorithm, bits, hardware_by_type, rank, weak, warning, fingerprint)` (Plan A Task 1): `warning` is `None` unless the key is weak and is then exactly `RSA <bits>-bit is weak: replace with Ed25519, ECDSA or RSA 3072+`; it raises `ValueError` for DSA, a blob whose embedded type is not the line's, a key `ssh-keygen -l` refuses, or a missing `ssh-keygen` (it runs `ssh-keygen -l -E sha256 -f /dev/stdin`); `fingerprint` is the SHA256 form `ssh-keygen -l` prints.
 - Produces:
   - `bunker.config.SigningConfig(refresh_days: int = 7, sign_timeout: float = 60.0, ssh_keygen: tuple[str, ...] = ("ssh-keygen",), agent_socket: str | None = None)`, `Config.signing`
   - `bunker.enginelib.keystrength_module() -> ModuleType`
@@ -2839,7 +2866,9 @@ def with_fido2(argv: Sequence[str], stdin: bytes, timeout: float, env: object) -
 def test_describe_agrees_with_ssh_keygen_on_the_bits(tmp_path: Path, kind: str) -> None:
     plan_a.module("hammunition.keystrength")
     spec = realkeys.make_file_key(tmp_path, kind, register=False)
-    assert keys.describe(spec.public_key).bits == bits_by_ssh_keygen(Path(spec.path + ".pub"))
+    described = keys.describe(spec.public_key)
+    assert described.bits == bits_by_ssh_keygen(Path(spec.path + ".pub"))
+    assert plan_a.module("hammunition.keystrength").classify(spec.public_key).fingerprint == spec.id
 
 
 def test_rsa_2048_is_accepted_and_warned_and_ed25519_is_not(tmp_path: Path) -> None:
@@ -2952,20 +2981,17 @@ def test_no_security_key_when_the_token_refuses_both(tmp_path: Path) -> None:
 # --- detection and setup ----------------------------------------------------
 
 
-def test_tokens_are_read_from_fido2_token_and_opensc(tmp_path: Path) -> None:
+def test_tokens_are_read_the_way_the_engines_doctor_reads_them(tmp_path: Path) -> None:
     def runner(argv: Sequence[str], stdin: bytes, timeout: float, env: object) -> subprocess.CompletedProcess[bytes]:
         if argv[0] == "fido2-token":
-            return done(0, "/dev/hidraw3: vendor=0x1050, product=0x0407 (Yubico YubiKey)\n")
-        return done(
-            0,
-            "# Detected readers (pcsc)\nNr.  Card  Features  Name\n"
-            "0    Yes             Yubico YubiKey OTP+FIDO+CCID 00 00\n"
-            "1    No              Empty reader\n",
-        )
+            return done(0, "/dev/hidraw3: vendor=0x1050, product=0x0407 (Yubico YubiKey)\nnot a device line\n")
+        if argv[-1] == "--name":
+            return done(0, "Yubico YubiKey PIV-II 00 00\n" if argv[3] == "0" else "Generic Empty Reader\n")
+        return done(0, "# Detected readers (pcsc)\nNr.  Name\n0    Yubico YubiKey OTP+FIDO+CCID 00 00\n1    Generic Empty Reader\n")
 
     found = keys.detect_tokens(runner=runner)
     assert found.fido2 == ("/dev/hidraw3: vendor=0x1050, product=0x0407 (Yubico YubiKey)",)
-    assert found.piv == ("0    Yes             Yubico YubiKey OTP+FIDO+CCID 00 00",)
+    assert found.piv == ("Yubico YubiKey PIV-II 00 00",), "a reader that does not name a PIV card is not a PIV token"
     assert keys.detect_tokens(runner=no_tokens) == keys.Tokens()
 
 
@@ -3248,7 +3274,9 @@ NO_HARDWARE = (
     "recommended, never required. This Bunker signs with a file key for now; add a "
     "hardware key whenever you like with `bunker keys add`."
 )
-_READER_WITH_CARD = re.compile(r"^\d+\s+Yes\b")
+_READER = re.compile(r"\s*(\d+)\s+")
+_PIV = re.compile(r"\bpiv(?:-ii)?\b", re.IGNORECASE)
+_HIDRAW = re.compile(r"/dev/hidraw\d+:")
 
 
 class KeyManagementError(SigningError):
@@ -3271,6 +3299,8 @@ def describe(public_key: str) -> Described:
     """Classify *public_key* with ``hammunition.keystrength``."""
     try:
         found = enginelib.keystrength_module().classify(signing.clean_public_key(public_key))
+        if found.fingerprint != signing.fingerprint(public_key):
+            raise ValueError("the engine and the Bunker disagree on this key's fingerprint")
         return Described(
             algorithm=str(found.algorithm),
             bits=int(found.bits),
@@ -3279,7 +3309,7 @@ def describe(public_key: str) -> Described:
             weak=bool(found.weak),
             warning=str(found.warning) if found.warning else None,
         )
-    except Exception as exc:  # the engine's refusals (DSA, malformed) have no common base
+    except (ValueError, enginelib.BackendError) as exc:  # classify raises ValueError; an old engine, BackendError
         raise KeyManagementError(f"this key cannot be used: {exc}") from None
 
 
@@ -3288,7 +3318,7 @@ class Tokens:
     fido2: tuple[str, ...] = ()
     """One line of ``fido2-token -L`` per attached FIDO2 authenticator."""
     piv: tuple[str, ...] = ()
-    """One line of ``opensc-tool --list-readers`` per reader with a card in it."""
+    """The ``opensc-tool --reader N --name`` of each reader that names a PIV card."""
 
 
 TtyRunner = Callable[[Sequence[str], float], int]
@@ -3305,8 +3335,11 @@ def run_tty(argv: Sequence[str], timeout: float) -> int:
 
 
 def detect_tokens(*, runner: Runner = run_command) -> Tokens:
-    """Whether a FIDO2 token (``fido2-token -L``) or a PIV card (through
-    ``pcscd``, read by ``opensc-tool``) is attached. A missing tool is no token."""
+    """Whether a FIDO2 token or a PIV card is attached, probed the way the engine's
+    own ``hammunition doctor`` does (Plan A Task 18): ``fido2-token -L`` lists
+    ``/dev/hidraw<N>: ...`` lines; ``opensc-tool --list-readers`` lists readers by
+    index through ``pcscd`` and ``opensc-tool --reader N --name`` names the card in
+    one, which is PIV when it says so. A missing tool is no token."""
 
     def lines(argv: Sequence[str]) -> list[str]:
         try:
@@ -3317,9 +3350,17 @@ def detect_tokens(*, runner: Runner = run_command) -> Tokens:
             return []
         return [x.strip() for x in done.stdout.decode("utf-8", "replace").splitlines() if x.strip()]
 
+    piv: list[str] = []
+    for line in lines(["opensc-tool", "--list-readers"]):
+        reader = _READER.match(line)
+        if reader is None:
+            continue
+        for name in lines(["opensc-tool", "--reader", reader.group(1), "--name"]):
+            if _PIV.search(name):
+                piv.append(name)
     return Tokens(
-        fido2=tuple(lines(["fido2-token", "-L"])),
-        piv=tuple(x for x in lines(["opensc-tool", "--list-readers"]) if _READER_WITH_CARD.match(x)),
+        fido2=tuple(x for x in lines(["fido2-token", "-L"]) if _HIDRAW.match(x)),
+        piv=tuple(piv),
     )
 
 
@@ -3854,29 +3895,26 @@ explains and makes a file key; generation walks Ed25519, ECDSA, RSA 4096/3072,
 RSA 2048 and RSA of 2048 bits or fewer is warned using the engine's rule."
 ```
 
-### Task 4: Record publisher facts and plan-time inputs during the run
+### Task 4: Record publisher facts and hold the engine's inputs
 
-A run records, per artifact the repository does not pin by sha256, what the publisher said when the Bunker fetched it (`publisher_name`, `publisher_size`), and holds the plan-time **inputs** the engine's expanded `artifacts --json` lists: region outlines (fetched, sha256 recorded: Geofabrik publishes no digest for a `.poly`) and the derived tile, sheet, 3DEP and FSTopo selections (written from the document, sha256 recorded). Both land in the catalogue.
-
-> **Assumption, from Plan A task A10, which this plan could not read:** the contract fixes the *catalogue's* field names, not the expanded `artifacts --json`. This task assumes each artifact entry may carry `publisher_name` and `publisher_size`, and the document may carry a top-level `inputs` list of `{"kind", "region", "name", "url", "content"}` with exactly one of `url` and `content` set. All of it is optional, so the pinned v0.21.0 document still parses. If A10 spells them differently, `engine._parse` and `tests/helpers.py` are the only two places to change.
+Two things the engine's offline planner reads from the catalogue. **Publisher facts**: for an artifact the repository does not pin by sha256, the dated file name and size the publisher reported. Plan A adds no field for them to `artifacts --json` (Task 16 keeps `ArtifactEntry` unchanged), and its reader (Tasks 1, 6, 8) wants exactly what the existing listing already carries, so the Bunker derives them: `publisher_name` is the last segment of the listed `url` (Geofabrik's dated `monaco-261006.osm.pbf`), `publisher_size` is the listed `size`, and the two are set together or both null (the reader refuses one without the other, and a size of zero or less). A `sha256`-pinned artifact gets neither (the pin is the trust). `publisher_url` is the listed `url` unchanged: the OSM resolver requires it to equal the dated URL it would build itself. **Inputs**: Plan A's `artifacts --json` (Task 16) gains a top-level `inputs` list of `{kind, region, name, url, sha256, size, content, deferred}`: the engine fetched the outline and built the four selection records itself with its own codecs (`render_record` of `RegionTiles`, `RegionQuads`, `RegionSheets`), and gives their exact UTF-8 text as `content` with its `sha256` and `size`. The Bunker writes `content` byte for byte under `inputs/<kind>/<name>`, checks the listed sha256 and size against what it is about to write, and records them. It has no codec of its own and fetches nothing for an input (the contract: "the Bunker never implements its own codec").
 
 **Files:**
 - Create: `src/bunker/inputs.py`
-- Modify: `src/bunker/engine.py` (`__all__` 31-42, `Artifact` 67-78, `Listing` 93-101, `_parse` 197-258), `src/bunker/run.py` (`RunReport` 137-217, `_Pass.__init__` 336-354, matched branch 477-488, `commit` 530-538, `run()` 720-726), `src/bunker/volume.py` (`artifact_dir` 395-412, `RESERVED` 58, `__all__` 359-375), `fuzz/fuzz_engine_document.py` (28-55, 68-74), `tests/helpers.py` (`entry` 234-258, `artifacts_doc` 265-282), `tests/scene.py` (`Scene.list` 391-394), `tests/test_engine.py`, `tests/test_run.py`, `tests/test_volume.py` (41), `docs/reference.md`, `CHANGELOG.md`
+- Modify: `src/bunker/engine.py` (`__all__` 31-42, `Listing` 93-101, `_parse` 197-258), `src/bunker/run.py` (`RunReport` 137-217, matched branch 477-488, `commit` 530-538, `run()` 720-726), `src/bunker/volume.py` (`artifact_dir` 395-412, `RESERVED` 58, `__all__` 359-375), `fuzz/fuzz_engine_document.py` (28-55, 68-74), `tests/helpers.py` (`entry` 234-258, `artifacts_doc` 265-282), `tests/scene.py` (`Scene.list` 391-394), `tests/test_engine.py`, `tests/test_run.py`, `tests/test_volume.py` (41), `docs/reference.md`, `CHANGELOG.md`
 - Test: `tests/test_engine.py`, `tests/test_run.py`, `tests/test_volume.py`
 
 **Interfaces:**
-- Consumes: `bunker.index.Input`, `bunker.index.INPUT_KINDS`, `bunker.run._download(root, artifact, transport)` (the `unverified-fetch` branch: size and date only), `bunker.volume.write_atomic`, `write_sidecar`.
+- Consumes: `bunker.index.Input`, `bunker.index.INPUT_KINDS`, `bunker.volume.write_atomic`, `write_sidecar`, `file_name`; Plan A's `InputEntry` as the engine emits it.
 - Produces:
-  - `bunker.engine.Artifact` gains `publisher_name: str | None = None`, `publisher_size: int | None = None`
-  - `bunker.engine.InputSpec(kind: str, region: str, name: str, url: str | None, content: Any | None)`; `Listing.inputs: tuple[InputSpec, ...] = ()`
-  - `bunker.volume.Downloaded` (Protocol: read-only `path: Path`, `sha256: str`, `size: int`); `bunker.volume.input_path(root: Path, kind: str, name: str) -> Path`; `RESERVED` gains `catalogue.sig.d` and `inputs`
-  - `bunker.inputs.InputOutcome(kind: str, region: str, name: str, action: str, reason: str | None = None)`; `fetch_inputs(root: Path, idx: Index, wanted: Sequence[InputSpec], *, download: Callable[[Artifact], Downloaded], stamp: str, refresh: Callable[[str | None], bool]) -> list[InputOutcome]`
+  - `bunker.engine.InputSpec(kind: str, region: str, name: str, url: str | None, sha256: str, size: int, content: str)`; `Listing.inputs: tuple[InputSpec, ...] = ()`. An input the engine marks `deferred` is not an `InputSpec`: it becomes a `Deferred("inputs", "<kind>:<region>", reason)`.
+  - `bunker.volume.input_path(root: Path, kind: str, name: str) -> Path`; `RESERVED` gains `catalogue.sig.d` and `inputs`
+  - `bunker.inputs.InputOutcome(kind: str, region: str, name: str, action: str, reason: str | None = None)`; `hold_inputs(root: Path, idx: Index, wanted: Sequence[InputSpec], *, stamp: str) -> list[InputOutcome]`
   - `bunker.run._publisher_facts(artifact: Artifact) -> tuple[str | None, int | None]`; `RunReport.inputs: list[InputOutcome]`
 
 - [ ] **Step 1: Write the failing tests**
 
-`tests/helpers.py`: change `entry(...)` to take `**extra: Any` after `deferred` and return `{..., "deferred": deferred, **extra}`; change `artifacts_doc(...)` to take `inputs: list[dict[str, Any]] | None = None` and add `if inputs is not None: doc["inputs"] = inputs` (build the dict in a variable first). Add:
+`tests/helpers.py`: add `import hashlib`; change `entry(...)` to take `**extra: Any` after `deferred` and return `{..., "deferred": deferred, **extra}`; change `artifacts_doc(...)` to take `inputs: list[dict[str, Any]] | None = None` and `git_pins: list[dict[str, Any]] | None = None` and, after building the dict in a variable, `if inputs is not None: doc["inputs"] = inputs` and `if git_pins is not None: doc["git_pins"] = git_pins`. Add (the shapes are Plan A Task 16's `InputEntry` and `GitPinEntry`):
 
 ```python
 def input_item(
@@ -3884,26 +3922,66 @@ def input_item(
     region: str,
     name: str,
     *,
+    content: str | None = None,
     url: str | None = None,
-    content: Any = None,
+    deferred: str | None = None,
 ) -> dict[str, Any]:
-    return {"kind": kind, "region": region, "name": name, "url": url, "content": content}
+    """One ``InputEntry`` as the engine's ``artifacts --json`` emits it: the exact
+    text, its sha256 and its size; all three null when the engine deferred it."""
+    body = None if content is None else content.encode("utf-8")
+    return {
+        "kind": kind,
+        "region": region,
+        "name": name,
+        "url": url,
+        "sha256": None if body is None else hashlib.sha256(body).hexdigest(),
+        "size": None if body is None else len(body),
+        "content": content,
+        "deferred": deferred,
+    }
+
+
+def git_pin_item(
+    name: str,
+    repo: str,
+    ref: str,
+    commit: str | None,
+    *,
+    submodules: bool = True,
+    deferred: str | None = None,
+) -> dict[str, Any]:
+    """One ``GitPinEntry`` as the engine emits it (``unit`` is always ``git-bundles``)."""
+    return {
+        "unit": "git-bundles",
+        "name": name,
+        "repo": repo,
+        "ref": ref,
+        "commit": commit,
+        "submodules": submodules,
+        "deferred": deferred,
+    }
 ```
 
 `tests/scene.py` `Scene.list` becomes:
 
 ```python
     def list(
-        self, entries: list[dict[str, Any]] | None = None, inputs: list[dict[str, Any]] | None = None
+        self,
+        entries: list[dict[str, Any]] | None = None,
+        inputs: list[dict[str, Any]] | None = None,
+        git_pins: list[dict[str, Any]] | None = None,
     ) -> None:
         self.engine.set_doc(
             artifacts_doc(
-                entries if entries is not None else self.entries(), regions=(REGION,), inputs=inputs
+                entries if entries is not None else self.entries(),
+                regions=(REGION,),
+                inputs=inputs,
+                git_pins=git_pins,
             )
         )
 ```
 
-Append to `tests/test_engine.py` (use the file's existing `parse`/`doc` helpers if it has them; this version is self-contained via `engine._parse`):
+Append to `tests/test_engine.py`:
 
 ```python
 def _doc_with(**over: Any) -> str:
@@ -3916,180 +3994,205 @@ def _doc_with(**over: Any) -> str:
     return json.dumps(doc)
 
 
-def test_publisher_name_and_size_are_read_when_listed_and_none_when_not() -> None:
-    import json
+def test_inputs_are_read_as_the_engine_lists_them() -> None:
+    from tests.helpers import input_item
 
-    from tests.helpers import artifacts_doc, entry
-
-    listed = entry(
-        "osm-regions", "europe/monaco", "https://p/monaco-latest.osm.pbf", "md5-publisher", "b" * 32,
-        size=7, publisher_name="monaco-260101.osm.pbf", publisher_size=7,
-    )  # fmt: skip
-    plain = entry("country-files", "cty.dat", "https://p/cty.zip", "sha256", "a" * 64)
-    got = engine._parse(json.dumps(artifacts_doc([listed, plain])))
-    assert (got.artifacts[0].publisher_name, got.artifacts[0].publisher_size) == ("monaco-260101.osm.pbf", 7)
-    assert (got.artifacts[1].publisher_name, got.artifacts[1].publisher_size) == (None, None)
-
-
-@pytest.mark.parametrize("field", ["publisher_name", "publisher_size"])
-def test_a_wrong_typed_publisher_field_is_refused_by_name(field: str) -> None:
-    import json
-
-    from tests.helpers import artifacts_doc, entry
-
-    bad = entry("u", "n", "https://p/x", "sha256", "a" * 64, **{field: ["x"]})
-    with pytest.raises(engine.EngineError, match=field):
-        engine._parse(json.dumps(artifacts_doc([bad])))
+    outline = input_item("region-outline", "europe/monaco", "europe/monaco.poly",
+                         content="monaco\n1\n 0.0 0.0\nEND\nEND\n", url="https://p/monaco.poly")  # fmt: skip
+    tiles = input_item("tile-selection", "europe/monaco", "europe/monaco.tiles", content="# record\n")
+    got = engine._parse(_doc_with(inputs=[outline, tiles, outline]))
+    assert [(i.kind, i.name, i.size) for i in got.inputs] == [
+        ("region-outline", "europe/monaco.poly", len(outline["content"].encode())),
+        ("tile-selection", "europe/monaco.tiles", len("# record\n")),
+    ], "the same input listed twice is held once"
+    assert got.inputs[0].url == "https://p/monaco.poly" and got.inputs[1].url is None
 
 
-def test_inputs_are_read_with_exactly_one_of_url_and_content() -> None:
+def test_a_deferred_input_is_a_deferral_not_an_input_and_not_a_refusal() -> None:
     from tests.helpers import input_item
 
     got = engine._parse(
-        _doc_with(
-            inputs=[
-                input_item("region-outline", "europe/monaco", "europe/monaco.poly", url="https://p/monaco.poly"),
-                input_item("tile-selection", "europe/monaco", "europe/monaco.json", content=["N43E007"]),
-                input_item("region-outline", "europe/monaco", "europe/monaco.poly", url="https://p/monaco.poly"),
-            ]
-        )
+        _doc_with(inputs=[input_item("sheet-selection", "europe/monaco", "europe/monaco.quads", deferred="outline unreachable")])
     )
-    assert [(i.kind, i.url, i.content) for i in got.inputs] == [
-        ("region-outline", "https://p/monaco.poly", None),
-        ("tile-selection", None, ["N43E007"]),
-    ], "the same input listed twice is held once"
+    assert got.inputs == ()
+    [note] = [d for d in got.deferred if d.unit == "inputs"]
+    assert note.reason == "outline unreachable" and not note.refused
 
 
 @pytest.mark.parametrize(
-    "item",
+    "mutate",
     [
-        {"kind": "region-outline", "region": "r", "name": "n", "url": "https://p/x", "content": [1]},
-        {"kind": "region-outline", "region": "r", "name": "n", "url": None, "content": None},
-        {"kind": "region-outline", "region": "", "name": "n", "url": "https://p/x", "content": None},
-        {"kind": "region-outline", "region": "r", "name": "n", "url": 5, "content": None},
-        "not an object",
+        {"content": None},  # not deferred, yet no content
+        {"sha256": None},
+        {"size": None},
+        {"size": True},
+        {"content": 5},
+        {"region": ""},
+        {"kind": 3},
     ],
 )
-def test_a_malformed_input_fails_the_listing_by_index(item: Any) -> None:
+def test_a_malformed_input_fails_the_listing_by_index(mutate: dict[str, Any]) -> None:
+    from tests.helpers import input_item
+
+    item = {**input_item("tile-selection", "europe/monaco", "europe/monaco.tiles", content="x\n"), **mutate}
     with pytest.raises(engine.EngineError, match="input 0"):
         engine._parse(_doc_with(inputs=[item]))
+
+
+def test_two_different_names_for_one_input_are_deferred_by_name() -> None:
+    from tests.helpers import input_item
+
+    first = input_item("tile-selection", "europe/monaco", "europe/monaco.tiles", content="a\n")
+    second = input_item("tile-selection", "europe/monaco", "europe/other.tiles", content="b\n")
+    got = engine._parse(_doc_with(inputs=[first, second]))
+    assert [i.name for i in got.inputs] == ["europe/monaco.tiles"]
+    assert any(d.unit == "inputs" and "twice" in d.reason for d in got.deferred)
 
 
 def test_an_unknown_input_kind_is_refused_by_name_with_the_engine_version() -> None:
     from tests.helpers import input_item
 
-    got = engine._parse(_doc_with(inputs=[input_item("cheese-selection", "europe/monaco", "x", content=[])]))
+    got = engine._parse(_doc_with(inputs=[input_item("cheese-selection", "europe/monaco", "x", content="y\n")]))
     assert got.inputs == ()
     [refused] = [d for d in got.deferred if d.refused and d.unit == "inputs"]
     assert "cheese-selection" in refused.reason and "0.21.0" in refused.reason
 ```
 
-(`import pytest`, `Any` are already imported by the file; add if not.)
-
 Append to `tests/test_run.py`:
 
 ```python
-def test_publisher_facts_are_recorded_for_publisher_digest_kinds_only(scene: Scene) -> None:
-    entries = scene.entries()
-    entries[0].update(publisher_name="bigcty-20260906.zip", publisher_size=len(scene.data["cty"]))
-    entries[1].update(publisher_name="vermont-260101.osm.pbf", publisher_size=len(scene.data["region"]))
-    entries[2].update(publisher_name=None, publisher_size=None)  # an etag-md5 tile: size falls back to the listed one
-    scene.list(entries)
+def test_publisher_facts_are_derived_for_publisher_digest_kinds_only(scene: Scene) -> None:
     scene.run()
     pinned = scene.entry("country-files", "cty.dat")
     assert (pinned.publisher_name, pinned.publisher_size) == (None, None), "the repository's pin is the trust"
     region = scene.entry("osm-regions", REGION)
     assert (region.publisher_name, region.publisher_size) == ("vermont-260101.osm.pbf", len(scene.data["region"]))
+    assert region.publisher_url == scene.region_url
     tile = scene.entry("dem-copernicus", TILE)
-    assert (tile.publisher_name, tile.publisher_size) == (None, len(scene.data["tile"]))
+    assert (tile.publisher_name, tile.publisher_size) == (f"{TILE}.tif", len(scene.data["tile"]))
     document = json.loads((scene.root / "catalogue.json").read_text())
     by_name = {a["name"]: a for a in document["artifacts"]}
     assert by_name[REGION]["publisher_name"] == "vermont-260101.osm.pbf"
+    assert by_name["cty.dat"]["publisher_name"] is None
+
+
+def test_a_publisher_name_without_a_size_is_not_recorded_half(scene: Scene) -> None:
+    """The engine's reader refuses a name without a size, and a size of zero."""
+    url = scene.pub.put("/snap/etcc.csv", b"x,y\n")
+    scene.list([*scene.entries(), entry("repeater-snapshots", "etcc.csv", url, "unverified-fetch", None)])
+    scene.run()
+    snapshot = scene.entry("repeater-snapshots", "etcc.csv")
+    assert (snapshot.publisher_name, snapshot.publisher_size) == (None, None)
 
 
 def test_publisher_facts_follow_a_copy_that_is_kept(scene: Scene) -> None:
     scene.run()
-    entries = scene.entries()
-    entries[1].update(publisher_name="vermont-260101.osm.pbf", publisher_size=len(scene.data["region"]))
-    scene.list(entries)
+    idx = index.load(scene.root)
+    region = idx.find("osm-regions", REGION)
+    assert region is not None
+    region.publisher_name = region.publisher_size = None  # an older Bunker's record
+    index.save(scene.root, idx, generated="2026-09-29T03:00:00Z")
     scene.clock.advance(hours=1)
     scene.run()  # nothing is fetched; the record still learns the name
     assert scene.entry("osm-regions", REGION).publisher_name == "vermont-260101.osm.pbf"
 
 
-def _monaco_inputs(scene: Scene, outline: bytes = b"monaco 1\n1.0 2.0\nEND\nEND\n") -> list[dict[str, Any]]:
-    url = scene.pub.put("/geofabrik/europe/monaco.poly", outline)
+OUTLINE = "monaco\n1\n 7.40 43.72\n 7.44 43.72\n 7.44 43.76\nEND\nEND\n"
+SELECTION = "# tile selection record\nN43E007\n"
+
+
+def _monaco_inputs() -> list[dict[str, Any]]:
     return [
-        input_item("region-outline", "europe/monaco", "europe/monaco.poly", url=url),
-        input_item("tile-selection", "europe/monaco", "europe/monaco.json", content=["N43E007"]),
+        input_item("region-outline", "europe/monaco", "europe/monaco.poly", content=OUTLINE, url="https://p/monaco.poly"),
+        input_item("tile-selection", "europe/monaco", "europe/monaco.tiles", content=SELECTION),
     ]
 
 
-def test_inputs_are_fetched_recorded_and_written_beside_the_artifacts(scene: Scene) -> None:
-    scene.list(inputs=_monaco_inputs(scene))
+def test_inputs_are_written_byte_for_byte_and_recorded(scene: Scene) -> None:
+    exact = "line one\r\nline two é no trailing newline"
+    scene.list(inputs=[*_monaco_inputs(), input_item("sheet-selection", "europe/monaco", "europe/monaco.quads", content=exact)])
     report = scene.run()
-    assert report.exit_code == 0 and [o.action for o in report.inputs] == ["fetched", "fetched"]
+    assert report.exit_code == 0 and [o.action for o in report.inputs] == ["fetched"] * 3
     held = {(i.kind, i.name): i for i in index.load(scene.root).inputs}
     outline = held["region-outline", "europe/monaco.poly"]
-    body = (scene.root / outline.path).read_bytes()
     assert outline.path == "inputs/region-outline/europe/monaco.poly"
-    assert outline.sha256 == sha(body) == volume.read_sidecar(scene.root / outline.path)
-    assert outline.size == len(body) and outline.region == "europe/monaco"
-    selection = held["tile-selection", "europe/monaco.json"]
-    assert (scene.root / selection.path).read_bytes() == b'["N43E007"]\n'
+    assert (scene.root / outline.path).read_bytes() == OUTLINE.encode()
+    assert outline.sha256 == sha(OUTLINE.encode()) == volume.read_sidecar(scene.root / outline.path)
+    assert outline.size == len(OUTLINE.encode()) and outline.region == "europe/monaco"
+    quads = held["sheet-selection", "europe/monaco.quads"]
+    assert (scene.root / quads.path).read_bytes() == exact.encode("utf-8"), "no newline or encoding normalisation"
     document = json.loads((scene.root / "catalogue.json").read_text())
-    assert {i["kind"] for i in document["inputs"]} == {"region-outline", "tile-selection"}
+    assert {i["kind"] for i in document["inputs"]} == {"region-outline", "tile-selection", "sheet-selection"}
 
 
-def test_a_second_run_does_not_fetch_a_held_outline_again(scene: Scene) -> None:
-    scene.list(inputs=_monaco_inputs(scene))
+def test_a_second_run_does_not_rewrite_an_unchanged_input(scene: Scene) -> None:
+    scene.list(inputs=_monaco_inputs())
     scene.run()
-    before = scene.pub.requests("/geofabrik/europe/monaco.poly")
+    path = scene.root / "inputs/tile-selection/europe/monaco.tiles"
+    before = path.stat().st_mtime_ns
     scene.clock.advance(hours=1)
     report = scene.run()
     assert [o.action for o in report.inputs] == ["unchanged", "unchanged"]
-    assert scene.pub.requests("/geofabrik/europe/monaco.poly") == before
+    assert path.stat().st_mtime_ns == before
 
 
 def test_a_changed_selection_is_rewritten_and_a_dropped_input_leaves_the_index_not_the_disk(scene: Scene) -> None:
-    scene.list(inputs=_monaco_inputs(scene))
+    scene.list(inputs=_monaco_inputs())
     scene.run()
-    scene.list(inputs=[input_item("tile-selection", "europe/monaco", "europe/monaco.json", content=["N43E007", "N43E008"])])
+    scene.list(inputs=[input_item("tile-selection", "europe/monaco", "europe/monaco.tiles", content=SELECTION + "N43E008\n")])
     scene.clock.advance(hours=1)
     scene.run()
     held = index.load(scene.root).inputs
-    assert [(i.kind, i.sha256) for i in held] == [("tile-selection", sha(b'["N43E007","N43E008"]\n'))]
+    assert [(i.kind, i.sha256) for i in held] == [("tile-selection", sha((SELECTION + "N43E008\n").encode()))]
     assert (scene.root / "inputs/region-outline/europe/monaco.poly").exists(), "deleting is for a person"
 
 
-def test_a_failed_outline_fetch_keeps_the_previous_copy_and_fails_the_run(scene: Scene) -> None:
-    scene.list(inputs=_monaco_inputs(scene))
+def test_an_input_whose_listed_digest_is_not_its_content_fails_alone_and_keeps_the_old_copy(scene: Scene) -> None:
+    scene.list(inputs=_monaco_inputs())
     scene.run()
-    scene.pub.files.pop("/geofabrik/europe/monaco.poly")
-    scene.clock.advance(days=2)  # the daily cadence is due
+    broken = _monaco_inputs()
+    broken[1]["content"] = SELECTION + "tampered\n"  # sha256 and size still describe the old text
+    scene.list(inputs=broken)
+    scene.clock.advance(hours=1)
     report = scene.run()
-    assert report.exit_code == 1 and report.inputs[0].action == "failed"
-    kept = [i for i in index.load(scene.root).inputs if i.kind == "region-outline"]
-    assert len(kept) == 1 and (scene.root / kept[0].path).exists()
+    assert report.exit_code == 1 and [o.action for o in report.inputs] == ["unchanged", "failed"]
+    assert "disagrees" in (report.inputs[1].reason or "")
+    kept = [i for i in index.load(scene.root).inputs if i.kind == "tile-selection"]
+    assert len(kept) == 1 and (scene.root / kept[0].path).read_bytes() == SELECTION.encode()
+
+
+def test_an_input_larger_than_the_engines_bound_is_refused(scene: Scene) -> None:
+    huge = "x" * (32 * 1024 * 1024 + 1)
+    scene.list(inputs=[input_item("tile-selection", "europe/monaco", "europe/monaco.tiles", content=huge)])
+    report = scene.run()
+    assert [o.action for o in report.inputs] == ["failed"] and "32 MiB" in (report.inputs[0].reason or "")
 
 
 def test_an_unsafe_input_name_fails_that_input_alone(scene: Scene) -> None:
     scene.list(inputs=[
-        input_item("tile-selection", "europe/monaco", "../../etc/passwd", content=[]),
-        input_item("tile-selection", "europe/monaco", "europe/monaco.json", content=["N43E007"]),
+        input_item("tile-selection", "europe/monaco", "../../etc/passwd", content="x\n"),
+        input_item("tile-selection", "europe/monaco", "europe/monaco.tiles", content=SELECTION),
     ])  # fmt: skip
     report = scene.run()
     assert [o.action for o in report.inputs] == ["failed", "fetched"]
     assert not (scene.root.parent / "etc").exists()
 
 
+def test_a_deferred_input_is_reported_deferred_and_nothing_is_written(scene: Scene) -> None:
+    scene.list(inputs=[input_item("sheet-selection", "europe/monaco", "europe/monaco.quads", deferred="outline unreachable")])
+    report = scene.run()
+    assert report.exit_code == 0 and report.inputs == []
+    assert {"unit": "inputs", "name": "sheet-selection:europe/monaco", "reason": "outline unreachable"} in report.deferred
+    assert not (scene.root / "inputs").exists()
+
+
 def test_a_unit_filtered_run_leaves_the_inputs_alone(scene: Scene) -> None:
-    scene.list(inputs=_monaco_inputs(scene))
+    scene.list(inputs=_monaco_inputs())
     scene.run(units=("osm-regions",))
     assert index.load(scene.root).inputs == []
 ```
 
-(imports for this file: `from bunker import index, volume`, `from tests.helpers import input_item`, `from tests.scene import TILE, sha`, `from typing import Any` — add what is missing; `REGION` and `json` are already imported.)
+(Imports for this file: `from bunker import index, volume`, `from tests.helpers import entry, input_item`, `from tests.scene import TILE, sha`, `from typing import Any`; `REGION` and `json` are already imported.)
 
 `tests/test_volume.py` line 41 neighbourhood: add `("catalogue.sig.d", "x"),` and `("inputs", "x"),` to the unsafe-names parameters, and:
 
@@ -4105,83 +4208,86 @@ def test_input_paths_share_the_segment_rules(tmp_path: Path) -> None:
         volume.input_path(tmp_path, "../x", "monaco.poly")
 ```
 
-Run: `.venv/bin/python -m pytest tests/test_engine.py tests/test_run.py tests/test_volume.py -q -x` — Expected: FAIL (`TypeError: entry() got an unexpected keyword argument` is fixed by the helper edit; the first real failure is `AttributeError: 'Artifact' object has no attribute 'publisher_name'`).
+Run: `.venv/bin/python -m pytest tests/test_engine.py tests/test_run.py tests/test_volume.py -q -x` — Expected: FAIL (`AttributeError: 'Listing' object has no attribute 'inputs'`).
 
 - [ ] **Step 2: The engine document**
 
-`src/bunker/engine.py`: add `"InputSpec"` to `__all__`. Give `Artifact` (after `licence`) `publisher_name: str | None = None` and `publisher_size: int | None = None`, with docstrings ("what the publisher said the file is called / how big it is, when the engine lists it"). Add:
+`src/bunker/engine.py`: add `"InputSpec"` to `__all__` and
 
 ```python
 @dataclass(frozen=True)
 class InputSpec:
-    """A plan-time input the engine's planning needs: a region outline to fetch
-    (``url``), or a selection derived from one (``content``)."""
+    """A plan-time input the engine's planning needs, exactly as its
+    ``artifacts --json`` lists it (Plan A, ``InputEntry``): the text to store,
+    with the sha256 and size the engine computed for it. *url* is where an
+    outline came from, kept for the record; the Bunker never fetches it."""
 
     kind: str
     region: str
     name: str
     url: str | None
-    content: Any | None
+    sha256: str
+    size: int
+    content: str
 ```
 
-Give `Listing` `inputs: tuple[InputSpec, ...] = ()` after `warnings`. In `_parse`, replace the `artifact = Artifact(...)` construction's keyword list by adding `publisher_name=_optional(item, index, "publisher_name", str), publisher_size=_optional(item, index, "publisher_size", int),` and add:
+Give `Listing` `inputs: tuple[InputSpec, ...] = ()` after `warnings`. Add `from bunker.index import INPUT_KINDS` and
 
 ```python
-def _optional(item: dict[str, Any], index: int, key: str, kind: type) -> Any:
-    value = item.get(key)
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, kind):
-        raise EngineError(
-            f"artifact {index} of the engine's document: {key!r} is {value!r}, not {kind.__name__}"
-        )
-    return value
-
-
 def _inputs(doc: dict[str, Any]) -> tuple[tuple[InputSpec, ...], list[Deferred]]:
     raw = doc.get("inputs", [])
     if not isinstance(raw, list):
         raise EngineError("the engine's document has an inputs entry that is not a list")
     specs: list[InputSpec] = []
-    refused: list[Deferred] = []
-    seen: set[tuple[str, str, str]] = set()
+    notes: list[Deferred] = []
+    seen: dict[tuple[str, str], str] = {}
     for n, item in enumerate(raw):
         words = ("kind", "region", "name")
         if not isinstance(item, dict) or not all(isinstance(item.get(k), str) and item[k] for k in words):
             raise EngineError(f"input {n} of the engine's document lacks a kind, region or name")
-        url, content = item.get("url"), item.get("content")
-        if not isinstance(url, str | None) or (url is None) == (content is None):
-            raise EngineError(
-                f"input {n} ({item['kind']} {item['region']}) must carry exactly one of url and content"
-            )
-        key = (item["kind"], item["region"], item["name"])
-        if item["kind"] not in INPUT_KINDS:
-            refused.append(
+        kind, region, name = item["kind"], item["region"], item["name"]
+        label = f"{kind}:{region}"
+        for key, types in (("url", str | None), ("deferred", str | None), ("content", str | None)):
+            if not isinstance(item.get(key), types):
+                raise EngineError(f"input {n} ({label}): {key!r} is {item.get(key)!r}, not text or null")
+        if item.get("deferred") is not None:
+            notes.append(Deferred("inputs", label, item["deferred"]))
+            continue
+        sha256, size, content = item.get("sha256"), item.get("size"), item.get("content")
+        if (
+            content is None
+            or not isinstance(sha256, str)
+            or isinstance(size, bool)
+            or not isinstance(size, int)
+        ):
+            raise EngineError(f"input {n} ({label}) is not deferred but has no content, sha256 and size")
+        if kind not in INPUT_KINDS:
+            notes.append(
                 Deferred(
                     "inputs",
-                    f"{item['kind']}:{item['region']}",
-                    f"refused: input kind {item['kind']!r} is not one this Bunker knows "
-                    f"({', '.join(INPUT_KINDS)}); the engine is Hammunition "
-                    f"{doc.get('engine') or 'of an unknown version'}. Nothing was held for it; "
-                    f"update the Bunker",
+                    label,
+                    f"refused: input kind {kind!r} is not one this Bunker knows ({', '.join(INPUT_KINDS)}); "
+                    f"the engine is Hammunition {doc.get('engine') or 'of an unknown version'}. "
+                    f"Nothing was held for it; update the Bunker",
                     refused=True,
                 )
             )
-        elif key not in seen:
-            seen.add(key)
-            specs.append(InputSpec(*key, url=url, content=content))
-    return tuple(specs), refused
+        elif (kind, region) in seen:
+            if seen[kind, region] != name:
+                notes.append(Deferred("inputs", label, f"listed twice with different names ({seen[kind, region]} and {name}); a catalogue holds one"))
+        else:
+            seen[kind, region] = name
+            specs.append(InputSpec(kind, region, name, item.get("url"), sha256, size, content))
+    return tuple(specs), notes
 ```
 
-(import `from bunker.index import INPUT_KINDS`), and at the end of `_parse` call `inputs, refused_inputs = _inputs(doc)` and pass `inputs=inputs` and `deferred=tuple(deferred) + tuple(refused_inputs)` to `Listing`.
-
-`fuzz/fuzz_engine_document.py`: in `_item` add `"publisher_name": _opt(fdp, "x.osm.pbf"), "publisher_size": _opt(fdp, "5")` (an int or a string, both are fuzz); in `_document` add `"inputs": [{"kind": _opt(fdp, "region-outline"), "region": _opt(fdp, "europe/monaco"), "name": _opt(fdp, "m.poly"), "url": _opt(fdp, "https://x"), "content": _opt(fdp, "[]")} for _ in range(fdp.ConsumeIntInRange(0, 3))]` and in `TestOneInput` after the deferred loop: `for spec in listing.inputs: assert (spec.url is None) != (spec.content is None)`.
+In `_parse`, before the `return Listing(...)`: `inputs, input_notes = _inputs(doc)`, and pass `inputs=inputs` and `deferred=tuple(deferred) + tuple(input_notes)`. `fuzz/fuzz_engine_document.py`: in `_document` add `"inputs": [{"kind": _opt(fdp, "region-outline"), "region": _opt(fdp, "europe/monaco"), "name": _opt(fdp, "m.poly"), "url": _opt(fdp, "https://x"), "sha256": _opt(fdp, "0" * 64), "size": _opt(fdp, "5"), "content": _opt(fdp, "x\n"), "deferred": None if fdp.ConsumeBool() else _opt(fdp, "why")} for _ in range(fdp.ConsumeIntInRange(0, 3))]` and in `TestOneInput` after the deferred loop `for spec in listing.inputs: assert isinstance(spec.content, str) and isinstance(spec.size, int)`.
 
 Run: `.venv/bin/python -m pytest tests/test_engine.py -q` — Expected: PASS.
 
 - [ ] **Step 3: Volume helpers**
 
-In `src/bunker/volume.py` add `"Downloaded"` and `"input_path"` to `__all__`, `from typing import Protocol`, set `RESERVED = ("index.json", "catalogue.json", "catalogue.sig.d", "status.html", "inputs")`, and replace `artifact_dir` (395-412):
+In `src/bunker/volume.py` add `"input_path"` to `__all__`, set `RESERVED = ("index.json", "catalogue.json", "catalogue.sig.d", "status.html", "inputs")`, and replace `artifact_dir` (395-412):
 
 ```python
 INPUTS = "inputs"
@@ -4216,19 +4322,6 @@ def input_path(root: Path, kind: str, name: str) -> Path:
     if not _UNIT.fullmatch(kind):
         raise UnsafeName(f"input kind {kind!r} is not a name")
     return root.joinpath(INPUTS, kind, *_segments(f"{INPUTS}/{kind}", name))
-
-
-class Downloaded(Protocol):
-    """A verified download waiting in ``.incoming``: what :func:`install` needs."""
-
-    @property
-    def path(self) -> Path: ...
-
-    @property
-    def sha256(self) -> str: ...
-
-    @property
-    def size(self) -> int: ...
 ```
 
 - [ ] **Step 4: `bunker.inputs`**
@@ -4242,29 +4335,30 @@ Create `src/bunker/inputs.py`:
 """Plan-time inputs: what the engine needs to plan with its publishers
 unreachable, held beside the artifacts under ``<root>/inputs/<kind>/<name>``.
 
-A region outline (``.poly``) is fetched through the engine's own fetch with no
-digest to check, so the Bunker records the sha256 of what arrived: the
-catalogue's signature then says "this Bunker saw these bytes", never more. A
-selection (the terrain tiles, topo sheets, 3DEP or FSTopo files an outline
-needs) arrives inside the engine's document and is written from it. Nothing
-here is opened or parsed beyond hashing.
+The engine builds every input itself (it fetched the outline; it rendered the
+selection records with its own codecs) and lists the exact text with its sha256
+and size in ``hammunition artifacts --json``. The Bunker writes that text byte
+for byte, refuses it if the listed digest or size is not the text's, and records
+both. It has no codec of its own: a record the engine's reader would refuse is
+the engine's to refuse, and the catalogue's signature only says "this Bunker
+recorded this". Nothing here is parsed beyond hashing.
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
-import os
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from bunker.engine import Artifact, InputSpec
-from bunker.enginelib import BackendError
+from bunker.engine import InputSpec
 from bunker.index import Index, Input
-from bunker.volume import Downloaded, UnsafeName, input_path, write_atomic, write_sidecar
+from bunker.volume import UnsafeName, input_path, write_atomic, write_sidecar
 
-__all__ = ["InputOutcome", "fetch_inputs"]
+__all__ = ["MAX_INPUT_BYTES", "InputOutcome", "hold_inputs"]
+
+#: The engine's reader refuses an input larger than this (Plan A, Task 7).
+MAX_INPUT_BYTES = 32 * 1024 * 1024
 
 
 @dataclass
@@ -4273,83 +4367,58 @@ class InputOutcome:
     region: str
     name: str
     action: str
-    """``fetched``, ``unchanged`` or ``failed``."""
+    """``fetched`` (written), ``unchanged`` or ``failed``."""
     reason: str | None = None
 
 
 def _one(
-    root: Path,
-    spec: InputSpec,
-    held: Input | None,
-    download: Callable[[Artifact], Downloaded],
-    stamp: str,
-    refresh: Callable[[str | None], bool],
+    root: Path, spec: InputSpec, held: Input | None, stamp: str
 ) -> tuple[InputOutcome, Input | None]:
     who = {"kind": spec.kind, "region": spec.region, "name": spec.name}
     try:
         target = input_path(root, spec.kind, spec.name)
     except UnsafeName as exc:
         return InputOutcome(**who, action="failed", reason=str(exc)), None
+    data = spec.content.encode("utf-8")
+    if len(data) > MAX_INPUT_BYTES:
+        return InputOutcome(**who, action="failed", reason="larger than the 32 MiB bound the engine reads"), held
+    digest = hashlib.sha256(data).hexdigest()
+    if digest != spec.sha256 or len(data) != spec.size:
+        return (
+            InputOutcome(
+                **who,
+                action="failed",
+                reason="the engine's document disagrees with itself: the listed sha256 or size is not the listed content's",
+            ),
+            held,
+        )
+    relative = target.relative_to(root).as_posix()
+    if held is not None and held.sha256 == digest and held.path == relative and target.is_file():
+        return InputOutcome(**who, action="unchanged"), held
     try:
-        if spec.content is not None:
-            text = json.dumps(spec.content, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-            data = (text + "\n").encode("utf-8")
-            digest, size = hashlib.sha256(data).hexdigest(), len(data)
-            if held is not None and held.sha256 == digest and target.is_file():
-                return InputOutcome(**who, action="unchanged"), held
-            target.parent.mkdir(parents=True, exist_ok=True)
-            write_atomic(target, data)
-        else:
-            if held is not None and target.is_file() and not refresh(held.fetched):
-                return InputOutcome(**who, action="unchanged"), held
-            got = download(
-                Artifact(
-                    unit="inputs",
-                    name=f"{spec.kind}/{spec.name}",
-                    url=spec.url or "",
-                    check="unverified-fetch",
-                    digest=None,
-                    checksum_url=None,
-                    size=None,
-                    licence="",
-                )
-            )
-            target.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(got.path, target)
-            digest, size = got.sha256, got.size
+        target.parent.mkdir(parents=True, exist_ok=True)
+        write_atomic(target, data)
         write_sidecar(target, digest)
-    except (BackendError, OSError, ValueError) as exc:
-        return InputOutcome(**who, action="failed", reason=str(exc).strip()), held
+    except OSError as exc:
+        return InputOutcome(**who, action="failed", reason=str(exc.strerror or exc)), held
     record = Input(
-        kind=spec.kind,
-        region=spec.region,
-        name=spec.name,
-        path=target.relative_to(root).as_posix(),
-        sha256=digest,
-        size=size,
-        fetched=stamp,
-    )
+        kind=spec.kind, region=spec.region, name=spec.name, path=relative,
+        sha256=digest, size=len(data), fetched=stamp,
+    )  # fmt: skip
     return InputOutcome(**who, action="fetched"), record
 
 
-def fetch_inputs(
-    root: Path,
-    idx: Index,
-    wanted: Sequence[InputSpec],
-    *,
-    download: Callable[[Artifact], Downloaded],
-    stamp: str,
-    refresh: Callable[[str | None], bool],
+def hold_inputs(
+    root: Path, idx: Index, wanted: Sequence[InputSpec], *, stamp: str
 ) -> list[InputOutcome]:
     """Hold every input in *wanted*; the index afterwards lists exactly those
     (an input the engine stopped listing leaves the index, never the disk). A
-    failed fetch keeps the previous copy and its record."""
-    current = {(i.kind, i.region, i.name): i for i in idx.inputs}
+    failed write keeps the previous copy and its record."""
+    current = {(i.kind, i.region): i for i in idx.inputs}
     outcomes: list[InputOutcome] = []
     kept: list[Input] = []
     for spec in wanted:
-        held = current.get((spec.kind, spec.region, spec.name))
-        outcome, record = _one(root, spec, held, download, stamp, refresh)
+        outcome, record = _one(root, spec, current.get((spec.kind, spec.region)), stamp)
         outcomes.append(outcome)
         if record is not None:
             kept.append(record)
@@ -4368,39 +4437,24 @@ def fetch_inputs(
 def _publisher_facts(artifact: Artifact) -> tuple[str | None, int | None]:
     """What the publisher said, kept only for artifacts the repository does not
     pin by sha256 (for a pinned one the pin is the trust and the copy here only
-    says "here"). The size falls back to the one the engine listed."""
-    if artifact.check == "sha256":
+    says "here"). The engine lists the dated URL and the size the publisher
+    reported, so the name is the URL's last segment and the size the listed one;
+    Plan A's reader wants the two together or neither, and a size above zero."""
+    if artifact.check == "sha256" or artifact.size is None or artifact.size <= 0:
         return None, None
-    size = artifact.publisher_size if artifact.publisher_size is not None else artifact.size
-    return artifact.publisher_name, size
+    return file_name(artifact.url), artifact.size
 ```
 
 3. In the matched branch (lines 482-484) and in `commit` (533-535), after `entry.publisher_url = artifact.url` add `entry.publisher_name, entry.publisher_size = _publisher_facts(artifact)`.
-4. `RunReport`: add `inputs: list[InputOutcome] = field(default_factory=list)`; `exit_code` becomes `1 if self.error or self.refused or counts["failed"] or counts["corrupted"] or any(o.action == "failed" for o in self.inputs) else 0`; `as_dict` adds `"inputs": [asdict(o) for o in self.inputs],` before `"deferred"`; `summary_lines` appends, before the plain-HTTP block, `for o in self.inputs: if o.action == "failed": lines.append(f"  failed input: {o.kind} {o.region}/{o.name}: {o.reason}")`.
-5. `_Pass`: add
-
-```python
-    def input_due(self, fetched: str | None) -> bool:
-        if self.all or "inputs" in self.named:
-            return True
-        return due(self.cfg.schedule.cadence("inputs"), _parse(fetched), self.now)
-```
-
-6. In `run()`, after the `ThreadPoolExecutor` block and before `_drop`:
+4. `RunReport`: add `inputs: list[InputOutcome] = field(default_factory=list)`; `exit_code` adds `or any(o.action == "failed" for o in self.inputs)`; `as_dict` adds `"inputs": [asdict(o) for o in self.inputs],` before `"deferred"`; `summary_lines` appends, before the plain-HTTP block, `for o in self.inputs: if o.action == "failed": lines.append(f"  failed input: {o.kind} {o.region}/{o.name}: {o.reason}")`.
+5. In `run()`, after the `ThreadPoolExecutor` block and before `_drop`:
 
 ```python
         if not units or "inputs" in units:
-            report.inputs = inputs.fetch_inputs(
-                root,
-                idx,
-                got.inputs,
-                download=lambda artifact: _download(root, artifact, state.transport),
-                stamp=state.stamp,
-                refresh=state.input_due,
-            )
+            report.inputs = inputs.hold_inputs(root, idx, got.inputs, stamp=state.stamp)
 ```
 
-Also in `run()` the `known` set for `--unit` validation: add `known.add("inputs")` so `--unit inputs` is legal.
+and add `known.add("inputs")` next to the other `known` lines so `--unit inputs` is legal. The engine's deferred inputs are already in `got.deferred`, hence in `report.deferred`.
 
 - [ ] **Step 6: Run the suite**
 
@@ -4409,43 +4463,43 @@ Expected: `exit=0`. Goldens: `BUNKER_UPDATE_GOLDENS=1 .venv/bin/python -m pytest
 
 - [ ] **Step 7: Docs, falsification, commit**
 
-`docs/reference.md`: the volume tree gains `inputs/<kind>/<name>` (+ `.sha256`), the catalogue artifact table gains `publisher_name` ("the dated file name the publisher resolved to; null for an artifact the repository pins by sha256"), `publisher_size`, and a catalogue `inputs` table (`kind` one of `region-outline`, `tile-selection`, `sheet-selection`, `dem3dep-selection`, `fstopo-selection`; `region`; `name`; `path`; `sha256`; `size`; `fetched`); "What the Bunker asks the engine" notes that artifact entries may carry `publisher_name` and `publisher_size`, and the document an `inputs` list; the `run` document row gains `inputs` (`kind`, `region`, `name`, `action`, `reason`). `CHANGELOG.md`: "- Publisher facts and inputs: a run records `publisher_name` and `publisher_size` for artifacts the repository does not pin by sha256, and holds the region outlines and derived selections the engine lists under `inputs/<kind>/<name>`, with their sha256, in the catalogue."
+`docs/reference.md`: the volume tree gains `inputs/<kind>/<name>` (+ `.sha256`); the catalogue artifact table gains `publisher_name` ("the last segment of the listed URL, the dated file name; null for an artifact the repository pins by sha256"), `publisher_size` ("the listed size; set with the name or both null"), and a catalogue `inputs` table (`kind` one of `region-outline`, `tile-selection`, `sheet-selection`, `dem3dep-selection`, `fstopo-selection`; `region`; `name`; `path` = `inputs/<kind>/<name>`; `sha256`; `size`; `fetched`) with the sentence "The text of an input is the engine's, byte for byte; the Bunker has no codec and fetches nothing for it"; "What the Bunker asks the engine" notes the `inputs` and `git_pins` arrays; the `run` document row gains `inputs` (`kind`, `region`, `name`, `action`, `reason`). `CHANGELOG.md`: "- Publisher facts and inputs: a run records `publisher_name` and `publisher_size` (from the listed URL and size) for artifacts the repository does not pin by sha256, and writes the inputs the engine lists (region outlines and the derived tile, sheet, 3DEP and FSTopo selections) byte for byte under `inputs/<kind>/<name>` with their sha256."
 
-Falsify: in `_publisher_facts` delete the `if artifact.check == "sha256": return None, None` guard; `test_publisher_facts_are_recorded_for_publisher_digest_kinds_only` FAILS on the pinned `cty.dat`; restore.
+Falsify: in `_publisher_facts` delete the `artifact.check == "sha256"` clause; `test_publisher_facts_are_derived_for_publisher_digest_kinds_only` FAILS on the pinned `cty.dat`; restore. In `_one` skip the `digest != spec.sha256` comparison; `test_an_input_whose_listed_digest_is_not_its_content...` FAILS; restore.
 
 Run: `make check; echo "exit=$?"` — Expected: `exit=0`.
 
 ```bash
 git add src/bunker/inputs.py src/bunker/engine.py src/bunker/run.py src/bunker/volume.py fuzz/fuzz_engine_document.py tests/helpers.py tests/scene.py tests/test_engine.py tests/test_run.py tests/test_volume.py tests/golden docs/reference.md CHANGELOG.md
-git commit -m "Record publisher facts and plan-time inputs in the catalogue
+git commit -m "Record publisher facts and hold the engine's inputs in the catalogue
 
-publisher_name and publisher_size for artifacts the repository does not pin by
-sha256; region outlines fetched and selections written under inputs/<kind>/<name>
-with their sha256, kept when a refetch fails, dropped from the index (not the
-disk) when the engine stops listing them."
+publisher_name and publisher_size derived from the listed URL and size for
+artifacts the repository does not pin by sha256; the engine's inputs written
+byte for byte under inputs/<kind>/<name> with the sha256 the engine listed,
+checked, and kept when a later write fails."
 ```
 
-### Task 5: New fetch kinds — sheets, payloads, git bundles
+### Task 5: Payloads, sheets and git bundles
 
-Three additions to what a Bunker holds. **Topo and FSTopo sheets** (US Topo, 3DEP and FSTopo, which the engine will take from a mirror after Plan A) arrive as two new check kinds: `etag` (the repository carries the object's ETag and size; an ETag is not always an MD5, so nothing here recomputes it) and `sized` (FSTopo files with no digest anywhere: size only, held under `hold_unverified` like the other unverified kinds). **Software payloads** (source tarballs, prebuilt binaries, venv wheels, the Node tarball, the mapsforge converter tool) are ordinary `sha256` artifacts under new unit and name shapes: no new kind, but their names carry `+`, `@` and nested paths, so a test pins that they survive the engine's percent-quoting and the server. **Git bundles** are built by the Bunker, not downloaded: `git clone --no-checkout` of the pinned repository, a check that the pinned commit is really there, `git bundle create --all`, and the same for each submodule, under the contract's names.
-
-> **Assumptions, for the same reason as Task 4:** the check names `etag`, `sized` and `git-commit`, and the call shapes `Fetcher.fetch_etag(url, etag, expected_size=...)` and `Fetcher.fetch_sized(url, expected_size=...)` (the spec names the two methods, not their signatures), are this plan's. Step 3 settles the names against the installed Plan A engine: `tests/test_kinds.py::test_the_table_covers_every_kind_the_installed_engine_can_emit` imports `hammunition.interface.artifacts.CHECKS` and fails on a kind the table lacks; rename here to match. How the engine lists git pins is also unread: this task assumes one artifact per pinned repository, `unit` `git-bundles`, `name` `<unit>@<commit>`, `url` the repository, `check` `git-commit`, `digest` the 40-hex commit id; the Bunker discovers submodules itself, and holds a submodule the engine also lists once.
+What Plan A's `artifacts --json` (Task 16) now lists, and what the Bunker must do with each. **Software payloads** (source tarballs, prebuilt binaries, venv payloads, the Node tarball, the mapsforge converter tool, git extra files) are ordinary `sha256` artifacts named by the engine's `payload_name(pin)`, with a null size and the licence "licence not recorded in this manifest" (Plan A does not invent either): no new check kind, but the Bunker must cope with no size, and with names carrying `+`, `@` and nested paths through the engine's percent-quoting and the server. **Topo and FSTopo sheets**: US Topo and 3DEP are listed with `etag-md5` and the repository-carried ETag, which for a multipart upload is not an MD5 (`<hex>-<parts>`); `Fetcher.fetch_md5` cannot check that, `Fetcher.fetch_etag` (already in v0.21.0: single-part and multipart, `expected_size` required) can, so an `etag-md5` whose digest is not 32 hex goes there. FSTopo is `sha256` when the repository pins it and `unverified-fetch` (no digest, size and date only) when it does not, both kinds the Bunker already holds. **Git pins** are not in the `artifacts` array: Plan A lists them in a separate `git_pins` array (`GitPinEntry`: `unit` always `git-bundles`, `name`, `repo`, `ref`, `commit` or null, `submodules`, `deferred`), and says the Bunker enumerates the recursive gitlinks itself and lists every bundle. The Bunker builds each bundle: `git clone --no-checkout` of the repository, a check that the pinned commit (and, for a tag, the tag) is really there, `git bundle create --all`, and the same for each gitlink, under Plan A's `bundle_name`.
 
 **Files:**
 - Create: `src/bunker/gitbundle.py`, `tests/test_gitbundle.py`, `tests/test_payloads.py`
-- Modify: `src/bunker/checks.py` (docstring 1-14, `KINDS` 420-489), `src/bunker/run.py` (`_download` 274-330, `_matches` 393-422, `sweep_incoming` 570-586, `_drop` 628-648, `_order` 673-674, `RunReport` 137-217, `run()` 720-726), `src/bunker/statuspage.py` (150-170), `Dockerfile` (apt list), `CLAUDE.md` (invariants), `README.md` (73-79, 124-126), `docs/reference.md` (102-111), `docs/guide.md` (295), `tests/test_kinds.py` (141-174), `tests/test_packaging.py`, `CHANGELOG.md`
-- Test: `tests/test_kinds.py`, `tests/test_gitbundle.py`, `tests/test_payloads.py`, `tests/test_statuspage.py`, `tests/test_packaging.py`
+- Modify: `src/bunker/checks.py` (docstring 1-14, `KINDS` 420-489), `src/bunker/engine.py` (`Listing`, `_parse`), `src/bunker/enginelib.py` (after `keystrength_module`), `src/bunker/run.py` (`_download` 274-330, `sweep_incoming` 570-586, `_drop` 628-648, `RunReport` 137-217, `run()` 720-726), `Dockerfile` (apt list), `CLAUDE.md` (invariants), `README.md` (73-79, 124-126), `docs/reference.md` (102-111), `docs/guide.md` (295), `tests/test_kinds.py` (141-174), `tests/test_engine.py`, `tests/test_packaging.py`, `CHANGELOG.md`
+- Test: `tests/test_kinds.py`, `tests/test_engine.py`, `tests/test_gitbundle.py`, `tests/test_payloads.py`, `tests/test_packaging.py`
 
 **Interfaces:**
-- Consumes: `bunker.volume.install(...)`, `artifact_dir`, `Downloaded`, `hash_file`, `read_sidecar`; `bunker.index.Entry`; `bunker.enginelib.BackendError`; `Fetcher.fetch_etag` and `Fetcher.fetch_sized` (Plan A).
+- Consumes: `Fetcher.fetch_etag(url: str, etag: str, *, expected_size: int)` and `Fetcher.fetch_md5` (both in v0.21.0); `hammunition.gitbundles.bundle_name(unit: str, commit: str, *, path: str | None = None, subcommit: str | None = None) -> str` (Plan A Task 15; raises `BackendError` on a malformed commit or path); `bunker.volume.install`, `hash_file`; `bunker.enginelib.BackendError`.
 - Produces:
-  - `bunker.checks.KINDS` gains `etag` (method `fetch_etag`, no algorithm, needs size and digest), `sized` (method `fetch_sized`, needs size, no digest: `unverified`), `git-commit` (method `git_bundle`, built by `bunker.gitbundle`, needs a digest: the commit id)
-  - `bunker.gitbundle.UNIT = "git-bundles"`, `ALLOWED_PROTOCOLS = "https"`, `MAX_DEPTH = 4`; `Pin(name: str, url: str, commit: str, licence: str = "")`; `Built(path: Path, sha256: str, size: int, submodules: tuple[Pin, ...])`; `GitRunner = Callable[[Sequence[str], Path | None, Mapping[str, str], float], subprocess.CompletedProcess[str]]`; `run_git(argv, cwd, env, timeout) -> CompletedProcess[str]`; `build(pin: Pin, workdir: Path, *, run: GitRunner = run_git, allowed: str | None = None) -> Built`; `BundleOutcome(name: str, action: str, reason: str | None = None)`; `hold_bundles(root: Path, idx: Index, pins: Sequence[Pin], *, stamp: str, run: GitRunner = run_git, allowed: str | None = None) -> list[BundleOutcome]`
+  - `bunker.checks.KINDS` gains `git-commit` (method `git_bundle`, no algorithm, needs a digest: the commit id). It is the Bunker's own kind for the rows `bunker.gitbundle` writes; no engine document carries it, so `tests/test_kinds.py::test_the_table_covers_every_kind_the_installed_engine_can_emit` is unaffected.
+  - `bunker.engine.GitPin(name: str, repo: str, ref: str, commit: str, submodules: bool)`; `Listing.git_pins: tuple[GitPin, ...] = ()`. A pin the engine marks `deferred` (or with a null commit) is a `Deferred("git-bundles", name, reason)`, never a failure.
+  - `bunker.enginelib.gitbundles_module() -> ModuleType`
+  - `bunker.gitbundle.UNIT = "git-bundles"`, `ALLOWED_PROTOCOLS = "https"`, `MAX_DEPTH = 4`; `Pin(name: str, repo: str, ref: str, commit: str, submodules: bool, licence: str = "")`; `Built(path: Path, sha256: str, size: int, submodules: tuple[Pin, ...])`; `GitRunner = Callable[[Sequence[str], Path | None, Mapping[str, str], float], subprocess.CompletedProcess[str]]`; `run_git(argv, cwd, env, timeout) -> CompletedProcess[str]`; `build(pin: Pin, workdir: Path, *, top: Pin | None = None, prefix: str = "", run: GitRunner = run_git, allowed: str | None = None) -> Built`; `BundleOutcome(name: str, action: str, reason: str | None = None)`; `hold_bundles(root: Path, idx: Index, pins: Sequence[Pin], *, stamp: str, run: GitRunner | None = None, allowed: str | None = None) -> list[BundleOutcome]`
   - `RunReport.bundles: list[BundleOutcome]`
 
-- [ ] **Step 1: Write the failing kind tests**
+- [ ] **Step 1: Write the failing kind and routing tests**
 
-In `tests/test_kinds.py` replace `test_the_engine_contract_kinds_are_listed_literally` and `test_the_table_is_complete_and_consistent` (lines 141-174) so they list the three new kinds:
+In `tests/test_kinds.py` replace `test_the_engine_contract_kinds_are_listed_literally` and `test_the_table_is_complete_and_consistent` (lines 141-174):
 
 ```python
 ALL_KINDS = {
@@ -4456,13 +4510,11 @@ ALL_KINDS = {
     "sha1-publisher",
     "unverified-zip",
     "unverified-fetch",
-    "etag",
-    "sized",
     "git-commit",
 }
 
 
-def test_the_engine_contract_kinds_are_listed_literally() -> None:
+def test_the_kinds_are_listed_literally() -> None:
     assert ALL_KINDS == set(KINDS)
 
 
@@ -4470,185 +4522,200 @@ def test_the_table_is_complete_and_consistent() -> None:
     assert set(KINDS) == ALL_KINDS
     for name, kind in KINDS.items():
         assert kind.name == name
-        assert kind.method in {
-            "fetch", "fetch_md5", "fetch_sha1", "fetch_checked", "fetch_etag", "fetch_sized", "git_bundle",
-        }  # fmt: skip
-        assert kind.algorithm in {"sha256", "md5", "sha1"} or kind.algorithm is None
+        assert kind.method in {"fetch", "fetch_md5", "fetch_sha1", "fetch_checked", "git_bundle"}
+        assert kind.algorithm in {"sha256", "md5", "sha1"} or kind.unverified or name == "git-commit"
         assert kind.summary
-    assert [n for n, k in KINDS.items() if k.unverified] == ["unverified-zip", "unverified-fetch", "sized"]
+    assert [n for n, k in KINDS.items() if k.unverified] == ["unverified-zip", "unverified-fetch"]
     assert [n for n, k in KINDS.items() if k.zip_structure] == ["unverified-zip"]
-    assert [n for n, k in KINDS.items() if k.algorithm is None and k.needs_digest] == ["etag", "git-commit"]
-    assert checks.is_unverified("sized") and not checks.is_unverified("etag")
+    assert checks.is_unverified("unverified-zip") and not checks.is_unverified("sha256")
     assert not checks.is_unverified("git-commit")
+    assert not checks.is_unverified("blake3-publisher")
 ```
 
-Add `held_unverified` to the file's `from bunker.index import load as load_index` import (`from bunker.index import held_unverified, load as load_index` splits into two lines under ruff's isort), and, near the other `needs_*` markers at the top of the file:
+and the sheet-routing tests (a fake `Fetcher` method records which one was asked; the digest shapes are Plan A's: a single-part ETag is 32 hex, a multipart one is `<32 hex>-<parts>`):
 
 ```python
-needs_sheets = pytest.mark.skipif(
-    not (hasattr(Fetcher, "fetch_etag") and hasattr(Fetcher, "fetch_sized")),
-    reason="Fetcher.fetch_etag / fetch_sized come with the Plan A engine release",
-)
-```
-
-and the behaviour tests (the loopback `Publisher` answers every path with `ETag: "<md5>"`):
-
-```python
-def etag_entry(bench: Bench, data: bytes = b"a us topo sheet " * 500) -> dict[str, Any]:
-    url = bench.pub.put("/ustopo/DE_Dover_20240101.pdf", data)
-    return entry("ustopo", "DE_Dover_20240101.pdf", url, "etag", md5(data), size=len(data))
+from types import SimpleNamespace
 
 
-@needs_sheets
-def test_an_etag_sheet_is_fetched_recorded_and_not_recomputed(bench: Bench) -> None:
-    listed = etag_entry(bench)
-    bench.list([listed])
+def routed(bench: Bench, monkeypatch: pytest.MonkeyPatch, digest: str) -> list[tuple[str, str]]:
+    asked: list[tuple[str, str]] = []
+    data = b"a us topo sheet " * 500
+
+    def fake(kind: str) -> Any:
+        def method(self: Fetcher, url: str, etag: str, *, expected_size: int, mirror: object = None) -> Any:
+            asked.append((kind, etag))
+            path = self.cache_dir / f"{kind}.part"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+            return SimpleNamespace(path=path, sha256=sha(data), size=len(data))
+
+        return method
+
+    monkeypatch.setattr(Fetcher, "fetch_md5", fake("md5"))
+    monkeypatch.setattr(Fetcher, "fetch_etag", fake("etag"), raising=False)
+    bench.list([entry("usgs-ustopo", "DE/Test_20260101", "https://p/Test.tif", "etag-md5", digest, size=len(data))])
     assert bench.run().exit_code == 0
-    stored = load_index(bench.root).find("ustopo", "DE_Dover_20240101.pdf")
-    assert stored is not None and stored.publisher_check == "etag"
-    assert stored.publisher_digest == listed["digest"] and stored.size == listed["size"]
-    before = bench.pub.total()
+    return asked
+
+
+def test_a_single_part_etag_is_checked_as_an_md5(bench: Bench, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert routed(bench, monkeypatch, "b" * 32) == [("md5", "b" * 32)]
+
+
+def test_a_multipart_etag_goes_to_fetch_etag_which_can_check_it(bench: Bench, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert routed(bench, monkeypatch, "b" * 32 + "-2") == [("etag", "b" * 32 + "-2")]
+
+
+def test_a_held_multipart_copy_is_kept_not_refetched_on_the_record(bench: Bench, monkeypatch: pytest.MonkeyPatch) -> None:
+    digest = "b" * 32 + "-2"
+    asked = routed(bench, monkeypatch, digest)
+    assert len(asked) == 1
     bench.clock.advance(hours=1)
     again = bench.run()
-    assert [o.action for o in again.outcomes] == ["unchanged"] and bench.pub.total() == before
-
-
-@needs_sheets
-def test_an_etag_sheet_with_the_wrong_etag_keeps_nothing(bench: Bench) -> None:
-    listed = etag_entry(bench)
-    listed["digest"] = "0" * 32
-    bench.list([listed])
-    report = bench.run()
-    assert report.exit_code == 1 and not list(bench.root.glob("ustopo/**/*.pdf"))
-
-
-@needs_sheets
-def test_a_sized_fstopo_file_is_held_under_the_unverified_ruling(bench: Bench) -> None:
-    data = b"fstopo geopdf " * 300
-    url = bench.pub.put("/fstopo/OR_Mt_Hood.pdf", data)
-    bench.list([entry("fstopo", "OR_Mt_Hood.pdf", url, "sized", None, size=len(data))])
-    assert bench.run().exit_code == 0
-    stored = load_index(bench.root).find("fstopo", "OR_Mt_Hood.pdf")
-    assert stored is not None and stored.size == len(data) and stored.publisher_digest is None
-    assert [e.name for e in held_unverified(load_index(bench.root))] == ["OR_Mt_Hood.pdf"]
-
-
-@needs_sheets
-def test_a_sized_fstopo_file_is_declined_when_unverified_files_are_switched_off(bench: Bench) -> None:
-    data = b"fstopo geopdf " * 300
-    url = bench.pub.put("/fstopo/OR_Mt_Hood.pdf", data)
-    bench.list([entry("fstopo", "OR_Mt_Hood.pdf", url, "sized", None, size=len(data))])
-    path = bench.tmp / "off.toml"
-    path.write_text(config_text(str(bench.root), selection="map_regions = []\nhold_unverified = false"))
-    report = run.run(config.load(path), now=bench.clock)
-    assert [d["name"] for d in report.declined] == ["OR_Mt_Hood.pdf"]
-    assert not (bench.root / "fstopo").exists()
-
-
-def test_a_sized_file_with_no_listed_size_is_refused_by_name(bench: Bench) -> None:
-    bench.list([entry("fstopo", "x.pdf", "https://p/x.pdf", "sized", None, size=None)])
-    report = bench.run()
-    assert report.exit_code == 1 and "no size" in (report.outcomes[0].reason or "")
-
-
-def test_an_engine_without_fetch_etag_is_named_not_guessed(
-    bench: Bench, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.delattr(Fetcher, "fetch_etag", raising=False)
-    bench.list([etag_entry(bench)])
-    report = bench.run()
-    assert report.exit_code == 1 and "no Fetcher.fetch_etag" in (report.outcomes[0].reason or "")
+    assert [o.action for o in again.outcomes] == ["verified"], "re-hashed against its sidecar, not fetched"
+    assert len(asked) == 1, "an ETag cannot be recomputed; the record is the evidence, so nothing is asked again"
 ```
 
-Run: `.venv/bin/python -m pytest tests/test_kinds.py -q -x` — Expected: FAIL — `assert {...} == set(KINDS)` (the table lacks `etag`, `sized`, `git-commit`).
+(`sha` from `tests.scene`; `Any` is imported by the file. `Bench` and the `bench` fixture are the ones in `tests/test_kinds.py`.)
 
-- [ ] **Step 2: Add the kinds**
+Run: `.venv/bin/python -m pytest tests/test_kinds.py -q -x` — Expected: FAIL — `assert {...} == set(KINDS)` (the table lacks `git-commit`).
 
-In `src/bunker/checks.py` append to the `KINDS` tuple, after `unverified-fetch`, in this order (the order is asserted):
+- [ ] **Step 2: The kind and the download routing**
+
+`src/bunker/checks.py`: append to `KINDS`, after `unverified-fetch`:
 
 ```python
-        CheckKind(
-            "sized",
-            "fetch_sized",
-            None,
-            True,
-            False,
-            "no digest exists (FSTopo files the repository does not pin): the exact size the "
-            "engine listed and nothing else; held under hold_unverified, with the engine's own "
-            "fetch",
-        ),
-        CheckKind(
-            "etag",
-            "fetch_etag",
-            None,
-            True,
-            True,
-            "the object's ETag as the repository carries it (US Topo, 3DEP) and the exact size; "
-            "an ETag is not always an MD5, so it is compared and never recomputed here",
-        ),
         CheckKind(
             "git-commit",
             "git_bundle",
             None,
             False,
             True,
-            "the commit id the repository pins; the Bunker clones the repository without "
-            "checking anything out, confirms the commit is in it, and bundles it "
-            "(bunker.gitbundle); the engine checks the commit again when it clones the bundle",
+            "the commit id the repository pins; built by the Bunker, never listed by the engine as "
+            "an artifact: it clones the repository without checking anything out, confirms the "
+            "commit (and the tag, if the pin is one) is in it, and bundles it (bunker.gitbundle); "
+            "the engine checks the commit again when it clones the bundle",
         ),
 ```
 
-(the file keeps `unverified-fetch` before `sized`; the asserted order is `unverified-zip`, `unverified-fetch`, `sized`.) Update the module docstring's last paragraph to mention that `etag`, `sized` and `git-commit` arrive with Plan A's engine.
-
-- [ ] **Step 3: Settle the names against the installed Plan A engine**
-
-Run: `.venv/bin/python -c "import hammunition.interface.artifacts as a; print(a.CHECKS)"` on the Plan A checkout.
-Expected: a tuple containing every kind in `ALL_KINDS`. If the engine spells a kind differently (for example `etag-sized`), rename it in `checks.py`, `ALL_KINDS`, the tests and the docs rows of Step 9 and re-run `.venv/bin/python -m pytest tests/test_kinds.py -q -k "covers_every_kind or listed_literally or complete"` — Expected: PASS. On the pinned v0.21.0 engine that import has no new kinds and the test passes trivially; that is why it is run here.
-
-- [ ] **Step 4: The run downloads them**
-
-`src/bunker/run.py`, `_download` (after the two `needs_digest` / `needs_size` guards, before `fetcher = Fetcher(...)`):
+`src/bunker/run.py`, `_download`: after the two `needs_digest` / `needs_size` guards and before `fetcher = Fetcher(...)` add
 
 ```python
     if kind.method == "git_bundle":
         raise BackendError(
-            f"{artifact.unit}/{artifact.name}: a git-commit artifact is built by bunker.gitbundle, "
+            f"{artifact.unit}/{artifact.name}: a git-commit row is built by bunker.gitbundle, "
             f"never downloaded"
         )
 ```
 
-and in the `if kind.method == "fetch" and digest is not None:` chain, add before the final `elif digest is not None and artifact.size is not None:`:
+and in the chain, before the final `elif digest is not None and artifact.size is not None:` add
 
 ```python
-    elif kind.method == "fetch_sized" and artifact.size is not None:
-        result = method(artifact.url, expected_size=artifact.size)
+    elif (
+        artifact.check == "etag-md5"
+        and digest is not None
+        and artifact.size is not None
+        and re.fullmatch(r"[0-9a-f]{32}", digest) is None
+    ):
+        # A multipart S3 ETag (`<md5>-<parts>`, US Topo and 3DEP sheets): not an MD5 of the
+        # bytes, so the engine's s3etag check, which reconstructs it from the part size.
+        etag = getattr(fetcher, "fetch_etag", None)
+        if etag is None:
+            raise BackendError(
+                "the installed Hammunition has no Fetcher.fetch_etag, which a multipart ETag needs"
+            )
+        result = etag(artifact.url, digest, expected_size=artifact.size)
 ```
 
-(`fetch_etag` takes the same shape as `fetch_md5` and `fetch_sha1` and falls into that last branch.)
+(`import re` at the top of `run.py`.) `_matches` needs no change: its record shortcut (the index says this copy was verified against this same digest, and the sidecar matches) answers for a multipart ETag; with no record it hashes the file as an MD5, does not match, and the copy is fetched again, which is safe.
 
-`_matches` (lines 393-422): replace the `if algorithm is None:  # pragma: no cover ...` block with
+Update `docs`-visible text in the module docstring of `checks.py`: add a sentence that `git-commit` is the Bunker's own.
+
+Run: `.venv/bin/python -m pytest tests/test_kinds.py -q` — Expected: PASS.
+
+- [ ] **Step 3: The engine's `git_pins` and the import accessor**
+
+`src/bunker/enginelib.py`:
 
 ```python
-        rel = held.relative_to(self.root).as_posix()
-        if algorithm is None:
-            # `etag`: an ETag cannot be recomputed from the bytes, so the record is
-            # the only evidence. A copy is current when the record says it was
-            # verified against this same ETag and its sidecar still matches.
-            return (
-                claimed is not None
-                and entry.path == rel
-                and entry.publisher_check == artifact.check
-                and entry.publisher_digest == artifact.digest
-            ), False
+def gitbundles_module() -> ModuleType:
+    """``hammunition.gitbundles`` (Plan A Task 15): the engine's bundle naming, which
+    the engine's checkout resolves bundles by. Imported when needed, after
+    ``hammunition.backends`` (its module notes the same import cycle)."""
+    try:
+        return importlib.import_module("hammunition.gitbundles")
+    except ImportError:
+        raise BackendError(
+            "the installed Hammunition has no hammunition.gitbundles, whose bundle names the "
+            "engine looks up; install the Hammunition release that carries it"
+        ) from None
 ```
 
-and delete the later duplicate `rel = held.relative_to(self.root).as_posix()` line.
+`src/bunker/engine.py`: add `"GitPin"` to `__all__`, and
 
-`_order` (673-674): `return [a for a in listing.artifacts if a.check != "git-commit" and (not named or a.unit in named)]`.
+```python
+@dataclass(frozen=True)
+class GitPin:
+    """One repository pin the engine lists (Plan A, ``GitPinEntry``)."""
 
-Run: `.venv/bin/python -m pytest tests/test_kinds.py -q` — Expected: PASS on the Plan A checkout; the `needs_sheets` tests SKIP on v0.21.0.
+    name: str
+    """``<unit>@<commit>`` (the contract's bundle name)."""
+    repo: str
+    ref: str
+    commit: str
+    submodules: bool
+```
 
-- [ ] **Step 5: Write the failing payload tests**
+`Listing` gains `git_pins: tuple[GitPin, ...] = ()`; in `_parse`:
+
+```python
+    git_pins: list[GitPin] = []
+    for n, raw_pin in enumerate(doc.get("git_pins", [])):
+        if not isinstance(raw_pin, dict) or not all(isinstance(raw_pin.get(k), str) for k in ("unit", "name", "repo", "ref")):
+            raise EngineError(f"git pin {n} of the engine's document lacks a unit, name, repo or ref")
+        commit, reason, flag = raw_pin.get("commit"), raw_pin.get("deferred"), raw_pin.get("submodules")
+        if not isinstance(commit, str | None) or not isinstance(reason, str | None) or not isinstance(flag, bool):
+            raise EngineError(f"git pin {n} ({raw_pin['name']}) has a malformed commit, deferred or submodules field")
+        if raw_pin["unit"] != "git-bundles":
+            raise EngineError(f"git pin {n} is in unit {raw_pin['unit']!r}, not git-bundles")
+        if reason is not None or commit is None:
+            deferred.append(Deferred("git-bundles", raw_pin["name"], reason or "the pin names no commit"))
+        else:
+            git_pins.append(GitPin(raw_pin["name"], raw_pin["repo"], raw_pin["ref"], commit, flag))
+```
+
+(`doc.get("git_pins", [])` must be a list: guard with `if not isinstance(..., list): raise EngineError(...)`), passed to `Listing(git_pins=tuple(git_pins), ...)`. Add to `tests/test_engine.py`:
+
+```python
+def test_git_pins_are_read_and_a_deferred_one_is_a_deferral() -> None:
+    from tests.helpers import git_pin_item
+
+    commit = "a" * 40
+    got = engine._parse(
+        _doc_with(
+            git_pins=[
+                git_pin_item(f"toolx@{commit}", "https://example.invalid/toolx", "v1.0", commit),
+                git_pin_item("tooly@v2", "https://example.invalid/tooly", "v2", None, deferred="tag has no recorded commit; offline bundle verification needs a repository pin"),
+            ]
+        )
+    )
+    assert [(p.name, p.commit, p.submodules) for p in got.git_pins] == [(f"toolx@{commit}", commit, True)]
+    assert [(d.unit, d.name) for d in got.deferred if d.unit == "git-bundles"] == [("git-bundles", "tooly@v2")]
+
+
+@pytest.mark.parametrize("mutate", [{"name": 3}, {"commit": 5}, {"submodules": "yes"}, {"unit": "other"}])
+def test_a_malformed_git_pin_fails_the_listing_by_index(mutate: dict[str, Any]) -> None:
+    from tests.helpers import git_pin_item
+
+    pin = {**git_pin_item("toolx@" + "a" * 40, "https://x", "v1", "a" * 40), **mutate}
+    with pytest.raises(engine.EngineError, match="git pin 0"):
+        engine._parse(_doc_with(git_pins=[pin]))
+```
+
+Run: `.venv/bin/python -m pytest tests/test_engine.py -q` — Expected: PASS.
+
+- [ ] **Step 4: Payload tests**
 
 Create `tests/test_payloads.py`:
 
@@ -4656,10 +4723,12 @@ Create `tests/test_payloads.py`:
 # SPDX-FileCopyrightText: Copyright (C) 2026 Renegade Penguin LLC
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Software payloads (source tarballs, prebuilt binaries, venv wheels, the Node
-tarball, the mapsforge converter tool) are ordinary sha256 artifacts. Nothing
-new fetches them; what these tests pin is that their names, which carry ``+``,
-``@`` and nested paths, survive the engine's percent-quoting and the server."""
+"""Software payloads (source tarballs, prebuilt binaries, venv payloads, the Node
+tarball, the mapsforge converter tool) are ordinary sha256 artifacts in Plan A's
+``artifacts --json``: named by the engine's ``payload_name``, with a null size and
+the licence "licence not recorded in this manifest". Nothing new fetches them;
+what these tests pin is that no size is fine and that names carrying ``+``,
+``@`` and nested paths survive the engine's percent-quoting and the server."""
 
 from __future__ import annotations
 
@@ -4672,23 +4741,27 @@ from tests.helpers import entry
 from tests.scene import Scene, sha
 from tests.test_server import Served
 
+LICENCE = "licence not recorded in this manifest"
 PAYLOADS = [
-    ("a2d", "source/a2d-1.2.3.tar.gz", "/src/a2d-1.2.3.tar.gz"),
-    ("a2d", "binary/linux-amd64/a2d", "/bin/a2d"),
-    ("meshtastic-cli", "venv/wheels/meshtastic-2.5.0+cpu-py3-none-any.whl", "/whl/meshtastic.whl"),
-    ("nodejs", "node/node-v22.11.0-linux-x64.tar.xz", "/node/node-v22.11.0-linux-x64.tar.xz"),
-    ("mapsforge-tools", "tools/mapsforge-map-writer-0.21.0-jar-with-dependencies.jar", "/jars/w.jar"),
-    ("wheelhouse", "pkg@1.0/whl", "/whl/pkg-1.0.whl"),
+    ("a2d", "source/a2d-1.2.3.tar.gz", "/src/a2d-1.2.3.tar.gz", True),
+    ("a2d", "binary/linux-amd64/a2d", "/bin/a2d", False),
+    ("meshtastic-cli", "venv/wheels/meshtastic-2.5.0+cpu-py3-none-any.whl", "/whl/meshtastic.whl", False),
+    ("nodejs", "node/node-v22.11.0-linux-x64.tar.xz", "/node/node-v22.11.0-linux-x64.tar.xz", False),
+    ("mapsforge-tools", "tools/mapsforge-map-writer-0.21.0-jar-with-dependencies.jar", "/jars/w.jar", True),
+    ("wheelhouse", "pkg@1.0/whl", "/whl/pkg-1.0.whl", False),
 ]
 
 
 @pytest.fixture
 def payloads(scene: Scene) -> dict[tuple[str, str], bytes]:
-    data = {(unit, name): f"payload {unit} {name} ".encode() * 40 for unit, name, _ in PAYLOADS}
+    data = {(unit, name): f"payload {unit} {name} ".encode() * 40 for unit, name, _, _ in PAYLOADS}
     listed = scene.entries()
-    for unit, name, path in PAYLOADS:
+    for unit, name, path, sized in PAYLOADS:
         body = data[unit, name]
-        listed.append(entry(unit, name, scene.pub.put(path, body), "sha256", sha(body), size=len(body)))
+        listed.append(
+            entry(unit, name, scene.pub.put(path, body), "sha256", sha(body),
+                  size=len(body) if sized else None, licence=LICENCE)  # fmt: skip
+        )
     scene.list(listed)
     return data
 
@@ -4698,7 +4771,7 @@ def quoted(unit: str, name: str) -> str:
     return "/" + "/".join(urllib.parse.quote(s, safe="") for s in [unit, *name.split("/")])
 
 
-def test_every_payload_is_fetched_and_recorded_without_publisher_facts(
+def test_every_payload_is_fetched_with_or_without_a_listed_size(
     scene: Scene, payloads: dict[tuple[str, str], bytes]
 ) -> None:
     report = scene.run()
@@ -4707,6 +4780,7 @@ def test_every_payload_is_fetched_and_recorded_without_publisher_facts(
         stored = scene.entry(unit, name)
         assert stored.sha256 == sha(body) and stored.size == len(body) and stored.status == "current"
         assert (stored.publisher_name, stored.publisher_size, stored.share) == (None, None, "all")
+        assert stored.licence == LICENCE
         assert (scene.root / (stored.path or "")).read_bytes() == body
 
 
@@ -4729,11 +4803,9 @@ def test_a_payload_that_moves_to_a_new_pin_keeps_one_previous_copy(
     scene: Scene, payloads: dict[tuple[str, str], bytes]
 ) -> None:
     scene.run()
-    unit, name, path = PAYLOADS[0]
+    unit, name, _, _ = PAYLOADS[0]
     body = b"the next source release " * 50
-    listed = [e for e in scene.entries()] + [
-        entry(unit, name, scene.pub.put("/src/a2d-1.2.4.tar.gz", body), "sha256", sha(body), size=len(body))
-    ]
+    listed = [*scene.entries(), entry(unit, name, scene.pub.put("/src/a2d-1.2.4.tar.gz", body), "sha256", sha(body), size=None)]
     scene.list(listed)
     scene.clock.advance(days=2)
     assert scene.run().exit_code == 0
@@ -4741,9 +4813,9 @@ def test_a_payload_that_moves_to_a_new_pin_keeps_one_previous_copy(
     assert stored is not None and stored.previous is not None and stored.sha256 == sha(body)
 ```
 
-Run: `.venv/bin/python -m pytest tests/test_payloads.py -q` — Expected: PASS already (no code change is needed for payloads; this task's test pins it). If `test_every_payload_is_served_at_its_quoted_mirror_path` fails on the `+` or `@` name, the server's `unquote` or the route table is wrong: fix there.
+Run: `.venv/bin/python -m pytest tests/test_payloads.py -q` — Expected: PASS already (no code change is needed for payloads; the test pins it). If `test_every_payload_is_served_at_its_quoted_mirror_path` fails on the `+` or `@` name, the server's `unquote` or route table is wrong: fix there.
 
-- [ ] **Step 6: Write the failing git bundle tests**
+- [ ] **Step 5: Write the failing git bundle tests**
 
 Create `tests/test_gitbundle.py`:
 
@@ -4768,39 +4840,55 @@ import pytest
 from bunker import gitbundle, index
 from bunker.enginelib import BackendError
 from bunker.gitbundle import Pin
-from tests.helpers import entry
+from tests import plan_a
+from tests.helpers import git_pin_item
 from tests.scene import Scene
 
-pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed here")
+pytestmark = [
+    pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed here"),
+    pytest.mark.skipif(
+        plan_a.optional("hammunition.gitbundles") is None,
+        reason="hammunition.gitbundles (the engine's bundle names) comes with the Plan A release",
+    ),
+]
 
 ENV = {**os.environ, "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
+UNIT = "toolx"
 
 
 def git(cwd: Path, *args: str) -> str:
     done = subprocess.run(
         ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid",
-         "-c", "protocol.file.allow=always", *args],
+         "-c", "protocol.file.allow=always", "-c", "tag.gpgSign=false", *args],
         cwd=cwd, env=ENV, check=True, capture_output=True, text=True,
     )  # fmt: skip
     return done.stdout.strip()
 
 
+def make(path: Path, text: str) -> str:
+    path.mkdir(parents=True)
+    git(path, "init", "-q")
+    (path / "f.txt").write_text(text)
+    git(path, "add", ".")
+    git(path, "commit", "-qm", text)
+    return git(path, "rev-parse", "HEAD")
+
+
 class Repos:
+    """top -> libs/sub -> inner: a submodule inside a submodule."""
+
     def __init__(self, tmp: Path) -> None:
-        self.sub = tmp / "sub"
-        self.top = tmp / "top"
-        for path in (self.sub, self.top):
-            path.mkdir()
-            git(path, "init", "-q")
-        (self.sub / "s.txt").write_text("sub\n")
-        git(self.sub, "add", ".")
-        git(self.sub, "commit", "-qm", "sub")
+        self.inner, self.sub, self.top = tmp / "inner", tmp / "sub", tmp / "top"
+        self.inner_commit = make(self.inner, "inner")
+        self.sub_commit = make(self.sub, "sub")
+        git(self.sub, "submodule", "add", "-q", "../inner", "inner")
+        git(self.sub, "commit", "-qm", "with inner")
         self.sub_commit = git(self.sub, "rev-parse", "HEAD")
-        (self.top / "t.txt").write_text("top\n")
-        git(self.top, "add", ".")
+        self.top_commit = make(self.top, "top")
         git(self.top, "submodule", "add", "-q", "../sub", "libs/sub")
-        git(self.top, "commit", "-qm", "top")
+        git(self.top, "commit", "-qm", "with sub")
         self.top_commit = git(self.top, "rev-parse", "HEAD")
+        git(self.top, "tag", "-a", "v1.0", "-m", "v1.0")
 
     @property
     def url(self) -> str:
@@ -4812,9 +4900,9 @@ def repos(tmp_path: Path) -> Repos:
     return Repos(tmp_path / "repos")
 
 
-def pin(repos: Repos, commit: str | None = None) -> Pin:
+def pin(repos: Repos, *, ref: str | None = None, commit: str | None = None, submodules: bool = True) -> Pin:
     commit = commit or repos.top_commit
-    return Pin(name=f"toolx@{commit}", url=repos.url, commit=commit, licence="GPL-3.0-or-later")
+    return Pin(f"{UNIT}@{commit}", repos.url, ref or commit, commit, submodules, "GPL-3.0-or-later")
 
 
 def test_a_bundle_holds_the_pinned_commit_and_verifies(repos: Repos, tmp_path: Path) -> None:
@@ -4826,23 +4914,58 @@ def test_a_bundle_holds_the_pinned_commit_and_verifies(repos: Repos, tmp_path: P
     assert git(clone, "cat-file", "-t", repos.top_commit) == "commit"
 
 
-def test_submodules_are_found_and_named_under_the_contract(repos: Repos, tmp_path: Path) -> None:
-    built = gitbundle.build(pin(repos), tmp_path / "work", allowed="file")
-    assert [(s.name, s.commit) for s in built.submodules] == [
-        (f"toolx@{repos.top_commit}/libs/sub@{repos.sub_commit}", repos.sub_commit)
-    ]
-    assert built.submodules[0].url == repos.sub.as_uri()
+def test_a_tag_pin_puts_the_tag_in_the_bundle_because_the_engine_reads_it_from_there(
+    repos: Repos, tmp_path: Path
+) -> None:
+    built = gitbundle.build(pin(repos, ref="v1.0"), tmp_path / "work", allowed="file")
+    clone = tmp_path / "from-bundle"
+    git(tmp_path, "clone", "-q", "--no-checkout", str(built.path), str(clone))
+    assert git(clone, "rev-parse", "refs/tags/v1.0^{commit}") == repos.top_commit
+
+
+def test_a_tag_that_moved_since_the_pin_is_refused(repos: Repos, tmp_path: Path) -> None:
+    (repos.top / "f.txt").write_text("changed")
+    git(repos.top, "commit", "-qam", "newer")
+    git(repos.top, "tag", "-f", "-a", "v1.0", "-m", "moved")
+    with pytest.raises(BackendError, match="tag v1.0 no longer resolves to the commit it is pinned to"):
+        gitbundle.build(pin(repos, ref="v1.0"), tmp_path / "work", allowed="file")
+
+
+def test_submodules_are_named_by_the_engines_bundle_name_with_the_full_recursive_path(
+    repos: Repos, tmp_path: Path
+) -> None:
+    top = pin(repos)
+    built = gitbundle.build(top, tmp_path / "work", allowed="file")
+    assert [s.name for s in built.submodules] == [f"{UNIT}@{repos.top_commit}/libs/sub@{repos.sub_commit}"]
+    nested = gitbundle.build(built.submodules[0], tmp_path / "work2", top=top, prefix="libs/sub/", allowed="file")
+    assert [s.name for s in nested.submodules] == [
+        f"{UNIT}@{repos.top_commit}/libs/sub/inner@{repos.inner_commit}"
+    ], "a nested path is the whole path from the top, and the commit in the name is the top's"
+
+
+def test_the_names_are_the_engines_own(repos: Repos, tmp_path: Path) -> None:
+    engine_names = plan_a.module("hammunition.gitbundles")
+    top = pin(repos)
+    built = gitbundle.build(top, tmp_path / "work", allowed="file")
+    assert built.submodules[0].name == engine_names.bundle_name(
+        UNIT, repos.top_commit, path="libs/sub", subcommit=repos.sub_commit
+    )
+
+
+def test_no_submodules_are_followed_when_the_pin_says_none(repos: Repos, tmp_path: Path) -> None:
+    built = gitbundle.build(pin(repos, submodules=False), tmp_path / "work", allowed="file")
+    assert built.submodules == ()
 
 
 def test_a_commit_the_repository_does_not_have_is_refused(repos: Repos, tmp_path: Path) -> None:
     with pytest.raises(BackendError, match="does not contain"):
-        gitbundle.build(pin(repos, "0" * 40), tmp_path / "work", allowed="file")
+        gitbundle.build(pin(repos, commit="0" * 40), tmp_path / "work", allowed="file")
 
 
 @pytest.mark.parametrize("commit", ["main", "abc123", "A" * 40, "0" * 39, "--upload-pack=x"])
 def test_only_a_full_commit_id_is_accepted(repos: Repos, tmp_path: Path, commit: str) -> None:
     with pytest.raises(BackendError, match="40-hex"):
-        gitbundle.build(pin(repos, commit), tmp_path / "work", allowed="file")
+        gitbundle.build(pin(repos, commit=commit), tmp_path / "work", allowed="file")
 
 
 def test_https_is_the_only_protocol_by_default(repos: Repos, tmp_path: Path) -> None:
@@ -4851,7 +4974,7 @@ def test_https_is_the_only_protocol_by_default(repos: Repos, tmp_path: Path) -> 
 
 
 def test_an_option_in_the_place_of_a_url_is_refused(tmp_path: Path) -> None:
-    hostile = Pin(name="x@" + "a" * 40, url="--upload-pack=touch /tmp/pwned", commit="a" * 40)
+    hostile = Pin("x@" + "a" * 40, "--upload-pack=touch /tmp/pwned", "main", "a" * 40, False)
     with pytest.raises(BackendError, match="not allowed"):
         gitbundle.build(hostile, tmp_path / "work", allowed="file")
     assert not Path("/tmp/pwned").exists()
@@ -4869,6 +4992,7 @@ def test_git_runs_in_a_clean_environment_with_no_prompt_and_never_checks_out(rep
     assert all(env["GIT_TERMINAL_PROMPT"] == "0" and env["GIT_CONFIG_GLOBAL"] == "/dev/null" for _, env in seen)
     clone = next(a for a, _ in seen if a[0] == "clone")
     assert clone[:3] == ["clone", "--quiet", "--no-checkout"] and "--" in clone, "a URL is never an option"
+    assert "--no-tags" not in clone, "the engine reads the pinned tag from the bundle"
     assert not any(a[0] == "checkout" for a, _ in seen), "nothing is ever checked out"
 
 
@@ -4897,30 +5021,30 @@ def test_a_missing_git_is_named(repos: Repos, tmp_path: Path, monkeypatch: pytes
 def listed(scene: Scene, repos: Repos, monkeypatch: pytest.MonkeyPatch) -> Repos:
     monkeypatch.setattr(gitbundle, "ALLOWED_PROTOCOLS", "file")
     scene.list(
-        [
-            *scene.entries(),
-            entry(
-                "git-bundles", f"toolx@{repos.top_commit}", repos.url, "git-commit", repos.top_commit,
-                licence="GPL-3.0-or-later",
-            ),  # fmt: skip
-        ]
+        git_pins=[git_pin_item(f"{UNIT}@{repos.top_commit}", repos.url, "v1.0", repos.top_commit)]
     )
     return repos
 
 
-def test_a_run_holds_the_bundle_and_its_submodule_and_does_not_rebuild_them(
+def names(repos: Repos) -> list[str]:
+    return [
+        f"{UNIT}@{repos.top_commit}",
+        f"{UNIT}@{repos.top_commit}/libs/sub@{repos.sub_commit}",
+        f"{UNIT}@{repos.top_commit}/libs/sub/inner@{repos.inner_commit}",
+    ]
+
+
+def test_a_run_holds_the_bundle_its_submodule_and_the_nested_one_and_does_not_rebuild_them(
     scene: Scene, listed: Repos, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     report = scene.run()
     assert report.exit_code == 0
-    assert sorted(o.action for o in report.bundles) == ["fetched", "fetched"]
-    top = scene.entry("git-bundles", f"toolx@{listed.top_commit}")
-    sub = scene.entry("git-bundles", f"toolx@{listed.top_commit}/libs/sub@{listed.sub_commit}")
-    assert (top.publisher_check, top.publisher_digest) == ("git-commit", listed.top_commit)
-    assert (sub.publisher_check, sub.publisher_digest) == ("git-commit", listed.sub_commit)
-    assert top.licence == sub.licence == "GPL-3.0-or-later"
-    for held in (top, sub):
+    assert sorted(o.action for o in report.bundles) == ["fetched"] * 3
+    for name in names(listed):
+        held = scene.entry("git-bundles", name)
+        assert held.publisher_check == "git-commit" and held.status == "current"
         assert (scene.root / (held.path or "")).stat().st_size == held.size
+        assert held.licence == "licence not recorded in this manifest"
     calls: list[str] = []
     real = gitbundle.run_git
     monkeypatch.setattr(gitbundle, "run_git", lambda *a, **k: calls.append(a[0][0]) or real(*a, **k))
@@ -4929,9 +5053,20 @@ def test_a_run_holds_the_bundle_and_its_submodule_and_does_not_rebuild_them(
     assert [o.action for o in again.bundles] == ["unchanged"] and calls == []
 
 
+def test_the_catalogue_names_each_bundle_for_the_engine_to_look_up(scene: Scene, listed: Repos) -> None:
+    import json
+
+    scene.run()
+    document = json.loads((scene.root / "catalogue.json").read_text())
+    rows = {a["name"]: a for a in document["artifacts"] if a["unit"] == "git-bundles"}
+    assert sorted(rows) == sorted(names(listed))
+    assert all(len(r["sha256"]) == 64 and r["size"] > 0 and r["share"] == "all" for r in rows.values())
+    assert all(r["publisher_name"] is None and r["publisher_size"] is None for r in rows.values())
+
+
 def test_a_bundle_verify_found_damaged_is_rebuilt(scene: Scene, listed: Repos) -> None:
     scene.run()
-    held = scene.entry("git-bundles", f"toolx@{listed.top_commit}")
+    held = scene.entry("git-bundles", f"{UNIT}@{listed.top_commit}")
     path = scene.root / (held.path or "")
     path.write_bytes(b"damaged")
     from bunker import verify
@@ -4940,36 +5075,47 @@ def test_a_bundle_verify_found_damaged_is_rebuilt(scene: Scene, listed: Repos) -
     scene.clock.advance(hours=1)
     rebuilt = scene.run()
     assert "fetched" in [o.action for o in rebuilt.bundles]
-    assert index.load(scene.root).find("git-bundles", held.name) is not None
     assert path.read_bytes() != b"damaged"
 
 
 def test_a_pin_the_engine_stops_listing_takes_its_submodules_out_of_the_index(scene: Scene, listed: Repos) -> None:
     scene.run()
-    scene.list(scene.entries())
+    scene.list(git_pins=[])
     scene.clock.advance(hours=1)
     report = scene.run()
-    assert {d["name"] for d in report.dropped} == {
-        f"toolx@{listed.top_commit}",
-        f"toolx@{listed.top_commit}/libs/sub@{listed.sub_commit}",
-    }
+    assert {d["name"] for d in report.dropped} == set(names(listed))
     assert [e for e in index.load(scene.root).artifacts if e.unit == "git-bundles"] == []
 
 
 def test_a_failing_clone_fails_that_pin_alone_and_the_run_exits_1(scene: Scene, listed: Repos) -> None:
+    gone = "a" * 40
     scene.list(
-        [
-            *scene.entries(),
-            entry("git-bundles", "gone@" + "a" * 40, "file:///nonexistent/repo", "git-commit", "a" * 40),
+        git_pins=[
+            git_pin_item(f"{UNIT}@{listed.top_commit}", listed.url, "v1.0", listed.top_commit),
+            git_pin_item(f"gone@{gone}", "file:///nonexistent/repo", gone, gone),
         ]
     )
     report = scene.run()
-    assert report.exit_code == 1 and report.bundles[0].action == "failed"
-    assert report.counts()["fetched"] == 3
+    assert report.exit_code == 1
+    assert [o.action for o in report.bundles if o.name == f"gone@{gone}"] == ["failed"]
+    assert sorted(o.action for o in report.bundles if o.action == "fetched") == ["fetched"] * 3
 
 
-def test_bundle_names_that_would_leave_the_volume_are_refused(scene: Scene, listed: Repos) -> None:
-    scene.list([entry("git-bundles", f"../../etc@{listed.top_commit}", listed.url, "git-commit", listed.top_commit)])
+def test_a_deferred_pin_is_a_deferral_not_a_failure(scene: Scene, listed: Repos) -> None:
+    scene.list(
+        git_pins=[git_pin_item("tooly@v2", "https://example.invalid/tooly", "v2", None, deferred="tag has no recorded commit")]
+    )
+    report = scene.run()
+    assert report.exit_code == 0 and report.bundles == []
+    assert {"unit": "git-bundles", "name": "tooly@v2", "reason": "tag has no recorded commit"} in report.deferred
+
+
+def test_a_name_that_would_leave_the_volume_is_refused(scene: Scene, listed: Repos) -> None:
+    scene.list(
+        git_pins=[
+            git_pin_item(f"../../etc@{listed.top_commit}", listed.url, listed.top_commit, listed.top_commit, submodules=False)
+        ]
+    )
     report = scene.run()
     assert report.bundles[0].action == "failed" and "refusing to store" in (report.bundles[0].reason or "")
     assert not (scene.root.parent / "etc@").exists()
@@ -4977,7 +5123,7 @@ def test_bundle_names_that_would_leave_the_volume_are_refused(scene: Scene, list
 
 Run: `.venv/bin/python -m pytest tests/test_gitbundle.py -q -x` — Expected: FAIL at collection, `ImportError: cannot import name 'gitbundle' from 'bunker'`.
 
-- [ ] **Step 7: Write `src/bunker/gitbundle.py`**
+- [ ] **Step 6: Write `src/bunker/gitbundle.py`**
 
 ```python
 # SPDX-FileCopyrightText: Copyright (C) 2026 Renegade Penguin LLC
@@ -4992,13 +5138,15 @@ or system config, no credential prompt, only the transports named in
 ``GIT_ALLOW_PROTOCOL`` (``https``), and a URL that is not a transport git would
 take as an option. A commit id is the verification: git's object model makes the
 bundle hold exactly the pinned commit or the build fails. The engine checks the
-commit again when it clones the bundle, and a submodule's gitlink against its own
-pin.
+commit again when it clones the bundle (it also reads the pinned tag from it, so
+tags are kept), and checks each gitlink against the parent's pin.
 
-Names follow the contract: ``<unit>@<commit>`` and, for each submodule,
-``<unit>@<commit>/<path>@<commit>``. A bundle of a pinned commit never changes,
-so a held one is rebuilt only if it is missing or ``bunker verify`` marked it
-corrupted.
+Names are the engine's (``hammunition.gitbundles.bundle_name``): ``<unit>@<commit>``
+and, for each gitlink, ``<unit>@<commit>/<path>@<subcommit>`` where the commit is
+the *top* one and the path is the whole path from the top, however deep. The
+engine lists the top-level pins (``git_pins``); the gitlinks are read here from
+the pinned tree and ``.gitmodules``. A bundle of a pinned commit never changes, so
+a held one is rebuilt only if it is missing or ``bunker verify`` marked it corrupted.
 """
 
 from __future__ import annotations
@@ -5008,11 +5156,11 @@ import re
 import shutil
 import subprocess
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
-from bunker.enginelib import BackendError
+from bunker.enginelib import BackendError, gitbundles_module
 from bunker.index import Entry, Index
 from bunker.index import save as save_index
 from bunker.volume import UnsafeName, artifact_dir, hash_file, install
@@ -5039,7 +5187,9 @@ MAX_DEPTH = 4
 #: A large repository over a slow link.
 GIT_TIMEOUT = 3600.0
 _COMMIT = re.compile(r"[0-9a-f]{40}")
+_TAG = re.compile(r"[A-Za-z0-9._+/-]+")
 _SUBMODULE_KEY = re.compile(r"submodule\.(.+)\.(path|url)")
+_NO_LICENCE = "licence not recorded in this manifest"
 
 GitRunner = Callable[
     [Sequence[str], Path | None, Mapping[str, str], float], "subprocess.CompletedProcess[str]"
@@ -5049,8 +5199,12 @@ GitRunner = Callable[
 @dataclass(frozen=True)
 class Pin:
     name: str
-    url: str
+    """``<unit>@<commit>``, or a submodule's full name."""
+    repo: str
+    ref: str
+    """A tag or a commit id; a tag is checked to still resolve to *commit*."""
     commit: str
+    submodules: bool
     licence: str = ""
 
 
@@ -5115,7 +5269,9 @@ def _resolve(parent: str, url: str) -> str:
     return url
 
 
-def _submodules(pin: Pin, clone: Path, run: GitRunner, env: Mapping[str, str]) -> tuple[Pin, ...]:
+def _submodules(
+    pin: Pin, top: Pin, prefix: str, clone: Path, run: GitRunner, env: Mapping[str, str]
+) -> tuple[Pin, ...]:
     tree = _ok(run(["ls-tree", "-r", "-z", pin.commit], clone, env, 120.0), "ls-tree")
     links: list[tuple[str, str]] = []
     for record in tree.split("\0"):
@@ -5140,81 +5296,101 @@ def _submodules(pin: Pin, clone: Path, run: GitRunner, env: Mapping[str, str]) -
         if found:
             by_name.setdefault(found.group(1), {})[found.group(2)] = value
     urls = {v["path"]: v["url"] for v in by_name.values() if "path" in v and "url" in v}
+    unit = top.name.partition("@")[0]
     out: list[Pin] = []
     for path, sha in links:
         if path not in urls:
             raise BackendError(f"{pin.name}: the submodule at {path} has no url in .gitmodules")
-        name = f"{pin.name}/{path}@{sha}"
         try:
+            name = gitbundles_module().bundle_name(
+                unit, top.commit, path=f"{prefix}{path}", subcommit=sha
+            )
             artifact_dir(Path("/"), UNIT, name)
-        except UnsafeName as exc:
+        except (UnsafeName, ValueError, BackendError) as exc:
             raise BackendError(str(exc)) from None
-        out.append(Pin(name, _resolve(pin.url, urls[path]), sha, pin.licence))
+        out.append(Pin(name, _resolve(pin.repo, urls[path]), sha, sha, True, pin.licence))
     return tuple(out)
 
 
 def build(
-    pin: Pin, workdir: Path, *, run: GitRunner = run_git, allowed: str | None = None
+    pin: Pin,
+    workdir: Path,
+    *,
+    top: Pin | None = None,
+    prefix: str = "",
+    run: GitRunner = run_git,
+    allowed: str | None = None,
 ) -> Built:
-    """Clone *pin* without a checkout, confirm the commit, and bundle it."""
+    """Clone *pin* without a checkout, confirm the commit (and the tag), bundle
+    it, and name its gitlinks. *top* and *prefix* are the pin the recursion began
+    at and the path from it, for a submodule."""
     protocols = ALLOWED_PROTOCOLS if allowed is None else allowed
     if not _COMMIT.fullmatch(pin.commit):
         raise BackendError(f"{pin.name}: {pin.commit!r} is not a full 40-hex commit id")
-    if urlsplit(pin.url).scheme not in protocols.split(":") or pin.url.startswith("-"):
+    if urlsplit(pin.repo).scheme not in protocols.split(":") or pin.repo.startswith("-"):
         raise BackendError(
-            f"{pin.name}: {pin.url!r} uses a transport that is not allowed here (only {protocols})"
+            f"{pin.name}: {pin.repo!r} uses a transport that is not allowed here (only {protocols})"
         )
     env = _env(protocols)
     shutil.rmtree(workdir, ignore_errors=True)
     workdir.mkdir(parents=True)
     clone, out = workdir / "clone", workdir / "out.bundle"
     _ok(
-        run(["clone", "--quiet", "--no-checkout", "--no-tags", "--", pin.url, str(clone)], None, env, GIT_TIMEOUT),
-        f"cloning {pin.url}",
+        run(["clone", "--quiet", "--no-checkout", "--", pin.repo, str(clone)], None, env, GIT_TIMEOUT),
+        f"cloning {pin.repo}",
     )
     found = _ok(run(["rev-parse", "--verify", f"{pin.commit}^{{commit}}"], clone, env, 60.0), "rev-parse")
     if found.strip() != pin.commit:
-        raise BackendError(f"{pin.url} does not contain commit {pin.commit}")
+        raise BackendError(f"{pin.repo} does not contain commit {pin.commit}")
+    if not _COMMIT.fullmatch(pin.ref):
+        if _TAG.fullmatch(pin.ref) is None or pin.ref.startswith("-"):
+            raise BackendError(f"{pin.name}: {pin.ref!r} is not a tag name")
+        tagged = _ok(run(["rev-parse", f"refs/tags/{pin.ref}^{{commit}}"], clone, env, 60.0), "rev-parse tag")
+        if tagged.strip() != pin.commit:
+            raise BackendError(
+                f"tag {pin.ref} no longer resolves to the commit it is pinned to: "
+                f"{pin.commit}, got {tagged.strip()}"
+            )
     _ok(run(["update-ref", "refs/bunker/pin", pin.commit], clone, env, 60.0), "update-ref")
     _ok(run(["bundle", "create", str(out), "--all"], clone, env, GIT_TIMEOUT), "git bundle create")
     _ok(run(["bundle", "verify", str(out)], clone, env, 600.0), "git bundle verify")
     digest, _ = hash_file(out)
-    return Built(out, digest, out.stat().st_size, _submodules(pin, clone, run, env))
+    below = _submodules(pin, top or pin, prefix, clone, run, env) if pin.submodules else ()
+    return Built(out, digest, out.stat().st_size, below)
 
 
-def _record(idx: Index, pin: Pin, built: Built, stamp: str, path: str) -> Entry:
+def _record(idx: Index, pin: Pin, built: Built, stamp: str, path: str) -> None:
     entry = idx.find(UNIT, pin.name)
     if entry is None:
-        entry = Entry(
-            unit=UNIT, name=pin.name, path=None, sha256=None, size=None, publisher_check="git-commit",
-            publisher_digest=None, publisher_url=pin.url, licence=pin.licence, fetched=None,
-            verified=None, status="failed", reason="not built yet", previous=None,
-        )  # fmt: skip
+        entry = _blank(pin)
         idx.artifacts.append(entry)
     entry.path, entry.sha256, entry.size = path, built.sha256, built.size
-    entry.publisher_digest, entry.publisher_url, entry.licence = pin.commit, pin.url, pin.licence
+    entry.publisher_digest, entry.publisher_url = pin.commit, pin.repo
+    entry.licence = pin.licence or _NO_LICENCE
     entry.fetched = entry.verified = stamp
     entry.status, entry.reason, entry.previous = "current", None, None
-    return entry
+
+
+def _blank(pin: Pin) -> Entry:
+    return Entry(
+        unit=UNIT, name=pin.name, path=None, sha256=None, size=None, publisher_check="git-commit",
+        publisher_digest=None, publisher_url=pin.repo, licence=pin.licence or _NO_LICENCE,
+        fetched=None, verified=None, status="failed", reason="not built yet", previous=None,
+    )  # fmt: skip
 
 
 def _fail(idx: Index, pin: Pin, reason: str) -> None:
     entry = idx.find(UNIT, pin.name)
     if entry is None:
-        idx.artifacts.append(
-            Entry(
-                unit=UNIT, name=pin.name, path=None, sha256=None, size=None, publisher_check="git-commit",
-                publisher_digest=None, publisher_url=pin.url, licence=pin.licence, fetched=None,
-                verified=None, status="failed", reason=reason, previous=None,
-            )  # fmt: skip
-        )
-    else:
-        entry.status, entry.reason = "failed", reason
+        entry = _blank(pin)
+        idx.artifacts.append(entry)
+    entry.status, entry.reason = "failed", reason
 
 
 def _hold(
-    root: Path, idx: Index, pin: Pin, stamp: str, run: GitRunner, allowed: str | None, depth: int
-) -> list[BundleOutcome]:
+    root: Path, idx: Index, pin: Pin, top: Pin, prefix: str, stamp: str,
+    run: GitRunner, allowed: str | None, depth: int,
+) -> list[BundleOutcome]:  # fmt: skip
     entry = idx.find(UNIT, pin.name)
     if (
         entry is not None
@@ -5226,7 +5402,7 @@ def _hold(
         return [BundleOutcome(pin.name, "unchanged")]
     work = root / ".incoming" / UNIT / f"{os.getpid()}-{depth}"
     try:
-        built = build(pin, work, run=run, allowed=allowed)
+        built = build(pin, work, top=top, prefix=prefix, run=run, allowed=allowed)
 
         def commit(path: str, previous: str | None) -> None:
             _record(idx, pin, built, stamp, path)
@@ -5246,8 +5422,9 @@ def _hold(
     for sub in built.submodules:
         if depth + 1 > MAX_DEPTH:
             outcomes.append(BundleOutcome(sub.name, "failed", f"submodules nested deeper than {MAX_DEPTH}"))
-        else:
-            outcomes += _hold(root, idx, replace(sub, licence=pin.licence), stamp, run, allowed, depth + 1)
+            continue
+        below = sub.name.split("/", 1)[1].rsplit("@", 1)[0] + "/"
+        outcomes += _hold(root, idx, sub, top, below, stamp, run, allowed, depth + 1)
     return outcomes
 
 
@@ -5260,74 +5437,55 @@ def hold_bundles(
     run: GitRunner | None = None,
     allowed: str | None = None,
 ) -> list[BundleOutcome]:
-    """Hold a bundle for every pin and for each of its submodules. A pin that
+    """Hold a bundle for every pin and for each of its gitlinks. A pin that
     fails fails alone: its previous bundle, if any, keeps serving."""
     runner = run if run is not None else run_git
     outcomes: list[BundleOutcome] = []
     for pin in pins:
-        outcomes += _hold(root, idx, pin, stamp, runner, allowed, 0)
+        outcomes += _hold(root, idx, pin, pin, "", stamp, runner, allowed, 0)
     return outcomes
 ```
 
-Two details the code above relies on: `hold_bundles` reads `run_git` at call time (the `run or run_git` form), which is what lets the "does not rebuild" test replace `gitbundle.run_git`; and `hash_file` returns `(sha256, md5)`.
+Details this code relies on: `hold_bundles` reads `run_git` at call time (`run or run_git`), which is what lets the "does not rebuild" test replace `gitbundle.run_git`; `hash_file` returns `(sha256, md5)`; `bundle_name` is Plan A's and raises a `BackendError` (a `ValueError`) on a malformed commit or path, and `_hold` hands the *prefix* of a submodule's own gitlinks as the sub-name's path part (`libs/sub/`), so a grandchild's path is the whole path from the top.
 
-- [ ] **Step 8: Hold bundles in the run**
+- [ ] **Step 7: Hold bundles in the run**
 
 `src/bunker/run.py`: `from bunker import gitbundle, inputs, publish, signing, statuspage` and `from bunker.gitbundle import BundleOutcome`. `RunReport`: add `bundles: list[BundleOutcome] = field(default_factory=list)`; `exit_code` adds `or any(o.action == "failed" for o in self.bundles)`; `as_dict` adds `"bundles": [asdict(o) for o in self.bundles],`; `summary_lines` adds `for o in self.bundles: if o.action == "failed": lines.append(f"  failed bundle: {o.name}: {o.reason}")`. In `run()`, after the inputs block:
 
 ```python
         if not units or gitbundle.UNIT in units:
+            licences = got.licences
             pins = [
-                gitbundle.Pin(a.name, a.url, a.digest or "", a.licence)
-                for a in got.artifacts
-                if a.check == "git-commit"
+                gitbundle.Pin(p.name, p.repo, p.ref, p.commit, p.submodules, licences.get(p.name.partition("@")[0], ""))
+                for p in got.git_pins
             ]
             report.bundles = gitbundle.hold_bundles(root, idx, pins, stamp=state.stamp)
 ```
 
-and add `known.add(gitbundle.UNIT)` next to the `inputs` line from Task 4. `_drop` (628-648): add before the `kept` list
-
-```python
-    bundles = {a.name for a in listing.artifacts if a.check == "git-commit"}
-```
-
-and extend the keep condition with `or (e.unit == gitbundle.UNIT and e.name.split("/", 1)[0] in bundles)`. `sweep_incoming` (570-586): before `return removed` add `shutil.rmtree(incoming / gitbundle.UNIT, ignore_errors=True)  # a killed build's scratch clones` (and `import shutil`).
+(`got.licences` is the engine's per-unit licence lines; a unit with none falls back to "licence not recorded in this manifest"), and add `known.add(gitbundle.UNIT)` next to the other `known` lines. `_drop` (628-648): before the `kept` list add `bundles = {p.name for p in listing.git_pins}`, and extend the keep condition with `or (e.unit == gitbundle.UNIT and e.name.split("/", 1)[0] in bundles)`, so a listed pin keeps its gitlinks' rows and an unlisted one drops them all. `sweep_incoming` (570-586): before `return removed` add `shutil.rmtree(incoming / gitbundle.UNIT, ignore_errors=True)  # a killed build's scratch clones` (and `import shutil`).
 
 `Dockerfile`: add `git` to the apt list. `tests/test_packaging.py::test_the_image_has_the_signing_tools` gains `"git"` in its tuple (rename it `test_the_image_has_the_tools_it_runs`).
 
-- [ ] **Step 9: Status page, docs and the invariant**
+- [ ] **Step 8: Docs and the invariant**
 
-`src/bunker/statuspage.py` lines 150-170: replace the `zipped`/`fetched` flags and their two sentences with
+`README.md` table (73-79) and `docs/reference.md` table (102-111): add the row `| \`git-commit\` | the commit id the repository pins; **built by the Bunker with git, never listed by the engine as an artifact**: the engine lists pins in \`git_pins\` | \`bunker.gitbundle\` |` (the docs test requires a row for each kind: ``| `kind` |`` at the start of a line). In `docs/reference.md` add after *Check kinds* a section "Sheets, payloads and git bundles": payloads are `sha256` artifacts with a possibly null size; US Topo and 3DEP sheets are `etag-md5` with the repository-carried ETag, and a multipart ETag (`<md5>-<parts>`) is checked by `Fetcher.fetch_etag`, a single-part one as an MD5; FSTopo is `sha256` or `unverified-fetch`; a git pin becomes `git-bundles/<unit>@<commit>` plus `git-bundles/<unit>@<commit>/<path>@<subcommit>` per gitlink, with the whole path from the top however deep; the Bunker runs `git clone --no-checkout`, `git bundle create --all` and `git bundle verify` with hooks off, no config, no prompt and only `https`; the tag of a tag pin is kept in the bundle and checked to still resolve to the pinned commit; a held bundle is rebuilt only if missing or marked corrupted. `CLAUDE.md` invariant 5 becomes: "**Nothing downloaded is executed, unpacked or parsed** beyond hashing, bar the engine's own structure check of an `unverified-zip` ... and git pins: the Bunker runs `git clone --no-checkout` and `git bundle` on a pinned repository, with hooks off, no config files, no prompt and `https` only, and never checks anything out (`bunker.gitbundle`)." Make the same change to `README.md` lines 124-126 and `docs/guide.md` line 295. `CHANGELOG.md`: "- Payloads, sheets and git bundles: a multipart US Topo or 3DEP ETag is checked with `Fetcher.fetch_etag`; software payloads with no listed size are held (names with `+`, `@` and nested paths tested through the server); the engine's `git_pins` are held as bundles built with `git clone --no-checkout` and `git bundle create --all`, tags and gitlinks included, under the engine's `bundle_name`."
 
-```python
-        zipped = any(KINDS[e.publisher_check].zip_structure for e in unverified)
-        snapshots = any(e.publisher_check == "unverified-fetch" for e in unverified)
-        sheets = any(e.publisher_check == "sized" for e in unverified)
-        ...
-        if snapshots:
-            parts.append("For the repeater lists, only the size and the date fetched are kept. ")
-        if sheets:
-            parts.append("For the FSTopo sheets, only the size the publisher listed was checked. ")
-```
+- [ ] **Step 9: Run, falsify, commit**
 
-and add to `tests/test_statuspage.py` a case with one `sized` entry asserting `"FSTopo sheets"` is in the page and `"repeater lists"` is not. `README.md` table (73-79) and `docs/reference.md` table (102-111): add rows `| \`sized\` | ... | \`Fetcher.fetch_sized\` |`, `| \`etag\` | ... | \`Fetcher.fetch_etag\` |`, `| \`git-commit\` | the commit id the repository pins; built by the Bunker with git, not downloaded | \`bunker.gitbundle\` |` (the docs test requires a row for each kind: ``| `kind` |`` at the start of a line). In `docs/reference.md` add a short section after *Check kinds*: "Git bundles": the names, that the Bunker runs `git clone --no-checkout --no-tags`, `git bundle create --all` and `git bundle verify` with hooks off, no config, no prompt and only `https`; that a submodule is found from the gitlinks and `.gitmodules` at the pinned commit and held as `<unit>@<commit>/<path>@<commit>`; that a held bundle is rebuilt only if missing or marked corrupted. `CLAUDE.md` invariant 5 becomes: "**Nothing downloaded is executed, unpacked or parsed** beyond hashing, bar the engine's own structure check of an `unverified-zip` ... and git pins: the Bunker runs `git clone --no-checkout` and `git bundle` on a pinned repository, with hooks off, no config files, no prompt and `https` only, and never checks anything out (`bunker.gitbundle`)." Make the same change to `README.md` lines 124-126 and `docs/guide.md` line 295. `CHANGELOG.md`: "- Sheets, payloads and git bundles: check kinds `etag` and `sized` (US Topo, 3DEP, FSTopo), software payloads pinned like any sha256 artifact (names with `+`, `@` and nested paths tested through the server), and git pins held as bundles built with `git clone --no-checkout` and `git bundle create --all`, submodules included, under `git-bundles/<unit>@<commit>`."
+Run: `.venv/bin/python -m pytest -q -W error::DeprecationWarning; echo "exit=$?"` — Expected: `exit=0` (everything in `test_gitbundle.py` skips where `git` is missing; `test_the_names_are_the_engines_own` skips until the Plan A engine is installed). Regenerate goldens (`run.json` gains `"bundles": []`) with `BUNKER_UPDATE_GOLDENS=1 .venv/bin/python -m pytest tests/test_cli.py -q` and read the diff.
 
-- [ ] **Step 10: Run, falsify, commit**
-
-Run: `.venv/bin/python -m pytest -q -W error::DeprecationWarning; echo "exit=$?"` — Expected: `exit=0` (the `needs_sheets` tests skip on an engine without `fetch_etag`, and everything in `test_gitbundle.py` skips where `git` is missing). Regenerate goldens (`run.json` gains `"bundles": []`) with `BUNKER_UPDATE_GOLDENS=1 .venv/bin/python -m pytest tests/test_cli.py -q` and read the diff.
-
-Falsify: in `build`, delete the `urlsplit(...).scheme not in protocols.split(":") or ...` clause and run `.venv/bin/python -m pytest tests/test_gitbundle.py -q -k "option_in_the_place or https_is_the_only"` — Expected: both FAIL (git is handed the text and fails with its own message, not "not allowed"); restore it. Delete `"--"` from the clone argv and run `-k clean_environment` — Expected: FAILS on `"--" in clone`; restore.
+Falsify: in `build`, delete the `urlsplit(...).scheme not in protocols.split(":") or ...` clause and run `.venv/bin/python -m pytest tests/test_gitbundle.py -q -k "option_in_the_place or https_is_the_only"` — Expected: both FAIL (git is handed the text and fails with its own message, not "not allowed"); restore it. Add `--no-tags` to the clone argv and run `-k "tag_pin or clean_environment"` — Expected: both FAIL (the bundle lacks `refs/tags/v1.0`; the argv assertion); restore.
 
 Run: `make check; echo "exit=$?"` — Expected: `exit=0`.
 
 ```bash
-git add src/bunker/gitbundle.py src/bunker/checks.py src/bunker/run.py src/bunker/statuspage.py Dockerfile CLAUDE.md README.md docs/reference.md docs/guide.md CHANGELOG.md tests/test_gitbundle.py tests/test_payloads.py tests/test_kinds.py tests/test_statuspage.py tests/test_packaging.py tests/golden
-git commit -m "New fetch kinds: etag and sized sheets, payload names, git bundles
+git add src/bunker/gitbundle.py src/bunker/checks.py src/bunker/engine.py src/bunker/enginelib.py src/bunker/run.py Dockerfile CLAUDE.md README.md docs/reference.md docs/guide.md CHANGELOG.md tests/test_gitbundle.py tests/test_payloads.py tests/test_kinds.py tests/test_engine.py tests/test_packaging.py tests/helpers.py tests/golden
+git commit -m "Payloads, multipart sheet ETags and git bundles
 
-etag and sized check kinds for US Topo, 3DEP and FSTopo; payload names with +,
-@ and nested paths pinned through the server; git pins held as bundles built
-with git clone --no-checkout and git bundle create, submodules included, with
-hooks off, no config, no prompt and https only."
+A multipart US Topo/3DEP ETag is checked with Fetcher.fetch_etag; payloads with no
+listed size are held and their odd names pinned through the server; the engine's
+git_pins are built as bundles (clone --no-checkout, tags kept, bundle create --all)
+with the engine's names, gitlinks included to any depth, hooks off, https only."
 ```
 
 ### Task 6: Server routes and group mode
@@ -5415,7 +5573,7 @@ def test_a_damaged_file_is_an_error_strictly_and_nobody_leniently(tmp_path: Path
         ("group", "md5-publisher", "alice", "all"),
         ("group", "unverified-fetch", "alice", "owner:e-aaaaaaaaaaaaaaaa"),
         ("group", "unverified-zip", "alice", "owner:e-aaaaaaaaaaaaaaaa"),
-        ("group", "sized", "alice", "owner:e-aaaaaaaaaaaaaaaa"),
+        ("group", "git-commit", "alice", "all"),
         ("group", "unverified-fetch", None, "owner:admin"),
         ("group", "unverified-fetch", "nobody-by-that-name", "owner:admin"),
     ],
@@ -5433,7 +5591,7 @@ def cfg_for(tmp_path: Path, bunker_table: str) -> config.Config:
 
 def held_snapshot() -> Index:
     snapshot = an_entry(unit="repeater-snapshots", name="etcc.csv", publisher_check="unverified-fetch", publisher_digest=None)
-    return Index(engine_version="0.22.0", artifacts=[an_entry(), snapshot])
+    return Index(engine_version="0.0.1", artifacts=[an_entry(), snapshot])
 
 
 def test_publish_applies_the_default_share_and_a_removed_owner_falls_back_to_admin(tmp_path: Path) -> None:
@@ -5579,15 +5737,14 @@ def test_a_personal_bunker_ignores_share(scene: Scene, served: Served) -> None:
 
 
 def test_the_catalogue_its_signatures_and_the_inputs_are_served(scene: Scene) -> None:
-    url = scene.pub.put("/geofabrik/europe/monaco.poly", b"monaco\n1\n2 3\nEND\nEND\n")
-    scene.list(inputs=[input_item("region-outline", "europe/monaco", "europe/monaco.poly", url=url)])
+    scene.list(inputs=[input_item("region-outline", "europe/monaco", "europe/monaco.poly", content="monaco\n1\n2 3\nEND\nEND\n")])
     scene.run()
     served = Served(scene.root)
     try:
         catalogue = (scene.root / "catalogue.json").read_bytes()
         assert served.request("/catalogue.json")[2] == catalogue == served.request("/index.json")[2]
         assert served.request("/catalogue.sig.d/1.sig")[2] == (scene.root / "catalogue.sig.d/1.sig").read_bytes()
-        assert served.request("/inputs/region-outline/europe/monaco.poly")[2] == b"monaco\n1\n2 3\nEND\nEND\n"
+        assert served.request("/inputs/region-outline/europe/monaco.poly")[2] == "monaco\n1\n2 3\nEND\nEND\n".encode()
         assert served.request("/inputs/region-outline/europe/monaco.poly.sha256")[0] == 200
         assert served.request("/catalogue.json")[1]["Cache-Control"] == "no-cache"
     finally:
@@ -5988,7 +6145,7 @@ def key_view(**over: Any) -> KeyView:
 
 
 def signing_page(keys: list[KeyView], **index_over: Any) -> str:
-    idx = Index(engine_version="0.22.0", generated="2026-10-07T12:00:00Z", serial=7, **index_over)
+    idx = Index(engine_version="0.0.1", generated="2026-10-07T12:00:00Z", serial=7, **index_over)
     return statuspage.render(idx, disk_used=0, keys=keys)
 
 
@@ -6035,7 +6192,7 @@ def test_key_text_is_escaped() -> None:
 def test_write_reads_the_registry_and_marks_what_the_catalogue_lists(tmp_path: Path) -> None:
     from tests.helpers import FAKE_ID
 
-    statuspage.write(tmp_path, Index(engine_version="0.22.0", serial=1, signers=[{"id": FAKE_ID}]))
+    statuspage.write(tmp_path, Index(engine_version="0.0.1", serial=1, signers=[{"id": FAKE_ID}]))
     page = (tmp_path / "status.html").read_text()
     assert FAKE_ID in page and "in the catalogue" in page
 ```
@@ -6190,7 +6347,7 @@ hardware key is configured."
 
 ### Task 8: `bunker export --to DIR`
 
-`bunker export --to DIR` writes the published catalogue, its signatures, the inputs and every file in the layout the server answers (`<dir>/<unit>/<name>` is the file itself, `<dir>/inputs/<kind>/<name>`, `<dir>/catalogue.json`, `<dir>/catalogue.sig.d/<n>.sig`), so a drive plugged into a laptop reads the same paths a LAN mirror serves (phase 3 builds the engine's `file://` reader; the layout is fixed now). Every byte is re-hashed against the catalogue while it is copied. The old catalogue on the drive is removed first and the new one written last, so a copy that stops halfway leaves a drive no laptop will believe.
+`bunker export --to DIR` writes the published catalogue, its signatures, the inputs and every file in the layout the server answers (`<dir>/<unit>/<name>` is the file itself, `<dir>/inputs/<kind>/<name>`, `<dir>/catalogue.json`, `<dir>/catalogue.sig.d/<n>.sig`), so a drive plugged into a laptop reads the same paths a LAN mirror serves (Plan A Task 4 already gives the engine a `file://` reader for exactly these paths, so this task produces the drive it reads). Every byte is re-hashed against the catalogue while it is copied. The old catalogue on the drive is removed first and the new one written last, so a copy that stops halfway leaves a drive no laptop will believe.
 
 **Files:**
 - Create: `src/bunker/export.py`, `tests/test_export.py`
@@ -6234,8 +6391,7 @@ def do_export(scene: Scene) -> export.ExportReport:
 
 
 def test_the_served_layout_is_written(scene: Scene) -> None:
-    url = scene.pub.put("/geofabrik/europe/monaco.poly", b"monaco\n1\n2 3\nEND\nEND\n")
-    scene.list(inputs=[input_item("region-outline", "europe/monaco", "europe/monaco.poly", url=url)])
+    scene.list(inputs=[input_item("region-outline", "europe/monaco", "europe/monaco.poly", content="monaco\n1\n2 3\nEND\nEND\n")])
     scene.run()
     report = do_export(scene)
     out = drive(scene)
@@ -6244,7 +6400,7 @@ def test_the_served_layout_is_written(scene: Scene) -> None:
     assert (out / "catalogue.sig.d/1.sig").read_bytes() == (scene.root / "catalogue.sig.d/1.sig").read_bytes()
     assert (out / "country-files/cty.dat").read_bytes() == scene.data["cty"]
     assert (out / "osm-regions" / REGION).read_bytes() == scene.data["region"]
-    assert (out / "inputs/region-outline/europe/monaco.poly").read_bytes() == b"monaco\n1\n2 3\nEND\nEND\n"
+    assert (out / "inputs/region-outline/europe/monaco.poly").read_bytes() == "monaco\n1\n2 3\nEND\nEND\n".encode()
     names = {p.name for p in out.rglob("*") if p.is_file()}
     assert not [n for n in names if n.endswith((".sha256", ".previous")) or n.startswith(".")]
 
@@ -6632,7 +6788,7 @@ def cmd_export(args: argparse.Namespace, emit: Emit | None) -> int:
 
 Run: `.venv/bin/python -m pytest -q -W error::DeprecationWarning; echo "exit=$?"` — Expected: `exit=0`.
 
-`docs/reference.md`: Commands row `bunker export --to DIR` (JSON `export`: `to`, `serial`, `files`, `bytes`, `skipped_owned`, `failed`, `exit_code`); exit codes (2 when the target overlaps the volume or there is no catalogue yet, 1 when a file failed or the target filled up, 125 while a run holds the volume). `docs/guide.md`: a section "Taking the catalogue to a drive": what is written and in what layout, that the previous catalogue on the drive is removed first and the new one written last so unplugging early leaves a drive nobody believes, that a group Bunker's `owner:` files are not written, that the drive can be any filesystem the laptop reads, that the engine reads a `file://` catalogue from phase 3 (not yet), and how to check a drive by hand with `ssh-keygen -Y verify` as in the signing section. `CHANGELOG.md`: "- `bunker export --to DIR`: the catalogue, its signatures, the inputs and every file in the served layout, each re-hashed against the catalogue as it is copied; the catalogue is removed first and written last."
+`docs/reference.md`: Commands row `bunker export --to DIR` (JSON `export`: `to`, `serial`, `files`, `bytes`, `skipped_owned`, `failed`, `exit_code`); exit codes (2 when the target overlaps the volume or there is no catalogue yet, 1 when a file failed or the target filled up, 125 while a run holds the volume). `docs/guide.md`: a section "Taking the catalogue to a drive": what is written and in what layout, that the previous catalogue on the drive is removed first and the new one written last so unplugging early leaves a drive nobody believes, that a group Bunker's `owner:` files are not written, that the drive can be any filesystem the laptop reads, that the engine already reads a `file://` catalogue from such a drive (Plan A Task 4), and how to check a drive by hand with `ssh-keygen -Y verify` as in the signing section. `CHANGELOG.md`: "- `bunker export --to DIR`: the catalogue, its signatures, the inputs and every file in the served layout, each re-hashed against the catalogue as it is copied; the catalogue is removed first and written last."
 
 Falsify: in `_export` move the catalogue write above the artifact loop; `test_a_full_drive_leaves_no_catalogue_behind` FAILS (a catalogue is left behind); restore. In `_copy` skip the `expected` comparison; `test_a_source_file_that_no_longer_matches...` FAILS; restore.
 
@@ -6833,7 +6989,7 @@ One test proves the whole chain with the internet gone: a real Bunker volume, si
 - Consumes: `bunker.server.make_server`, `bunker.run.run`, `bunker.publish.publish`, `bunker.signing.SshKeygenBackend`, `tests.realkeys.make_file_key`, `tests.conftest.Publisher`; Plan A: `hammunition.signers`, the engine's `mirror enrol` and `install --offline`.
 - Produces: `tests.netns.allowed() -> bool`; `isolation_prefix() -> list[str] | None`; `run_scenario(spec: dict[str, Any], prefix: Sequence[str], *, timeout: float = 600.0) -> Outcome`; `Outcome(probes: dict[str, bool], steps: list[StepResult], bunker_log: str)` with `step(name)` and `isolated()`; `StepResult(name, returncode, stdout, stderr)`; `EngineDriver(command: str, catalog: Path)` with `enrol(url, fingerprint)` and `install(unit)`; `make_engine_catalog(source: Path, dest: Path, *, url: str, data: bytes) -> None`.
 
-> **Which parts need the Plan A engine release.** Needs nothing: `tests/netns.py`, `tests/netns_scenario.py` and `test_the_namespace_reaches_only_the_bunker` (it fetches the catalogue and fails to fetch the internet from inside the namespace, with the Python standard library). Needs Plan A: the other four tests (`hammunition.signers` is imported first, so they skip on v0.21.0) and, inside them, the engine command lines in `EngineDriver`: `mirror enrol URL` reading the typed fingerprint on stdin (the spec: "asks the operator to type the fingerprint … as the D-040 repository-key step does") and `install UNIT --offline --yes`. If Plan A spells either differently, `EngineDriver` is the only place to change. Also assumed, unread: a `data` unit installs without root (`unshare -r` makes the engine uid 0 in the namespace, which may be enough for a user data prefix and not for a system one); the first run on the Plan A engine settles it.
+> **Which parts need the Plan A engine release.** Needs nothing: `tests/netns.py`, `tests/netns_scenario.py` and `test_the_namespace_reaches_only_the_bunker` (it fetches the catalogue and fails to fetch the internet from inside the namespace, with the Python standard library). Needs Plan A: the other four tests (`hammunition.signers` is imported first, so they skip on v0.21.0) and, inside them, the engine command lines, all read in Plan A (Task 3, Task 5, Task 4, Task 2): `hammunition --catalog DIR mirror enrol URL` takes no `--yes` and asks only at a terminal ("Type one or more fingerprints, comma-separated: "), so the test answers it on a pseudo-terminal; `hammunition --catalog DIR install UNIT --offline --yes` (`install` takes `NAME...`, `--dry-run`, `--yes`) plans from the enrolled Bunker's catalogue. The refusals are Plan A's own words: a lower serial, "serial N is older than accepted serial M; restore confirmed? hammunition mirror accept-older"; a signature that does not verify, "no enrolled signature verified"; a catalogue the transport cannot read, an error naming `catalogue.json` (Plan A does not fix this wording, so the test asserts only the word "catalogue"; see "Needs from Plan A"). Still unread: whether a `data` unit installs without a saved station or a root-owned prefix (`unshare -r` makes the engine uid 0 in the namespace, which may be enough for a user data prefix and not for a system one); the first run on the Plan A engine settles it.
 
 - [ ] **Step 1: The harness**
 
@@ -6948,10 +7104,12 @@ def run_scenario(spec: dict[str, Any], prefix: Sequence[str], *, timeout: float 
 
 
 class EngineDriver:
-    """The one place this test knows the engine's command line. Plan A's forms,
-    taken from the spec and not run: ``mirror enrol URL`` reads the fingerprint
-    the operator types on stdin; ``install UNIT --offline --yes`` plans from the
-    enrolled Bunker's catalogue and contacts no publisher."""
+    """The one place this test knows the engine's command line, read in Plan A
+    and not run. ``mirror enrol URL`` (Task 3) asks "Type one or more fingerprints,
+    comma-separated: " and only at a terminal (``--yes`` cannot answer it), so the
+    step is run on a pseudo-terminal and answered when the prompt appears;
+    ``install UNIT --offline --yes`` plans from the enrolled Bunker's catalogue
+    and contacts no publisher."""
 
     def __init__(self, command: str, catalog: Path) -> None:
         self.command = command
@@ -6961,7 +7119,11 @@ class EngineDriver:
         return [self.command, "--catalog", str(self.catalog)]
 
     def enrol(self, url: str, fingerprint: str) -> dict[str, Any]:
-        return {"name": "enrol", "argv": [*self._base(), "mirror", "enrol", url], "stdin": fingerprint + "\n"}
+        return {
+            "name": "enrol",
+            "argv": [*self._base(), "mirror", "enrol", url],
+            "tty": [{"expect": "fingerprints", "send": fingerprint}],
+        }
 
     def install(self, unit: str) -> dict[str, Any]:
         return {"name": "install", "argv": [*self._base(), "install", unit, "--offline", "--yes"]}
@@ -7001,7 +7163,7 @@ The spec is a JSON file: ``root`` (the volume), ``port``, ``publisher_port``
 (where the first phase's publisher listened in the outer namespace), ``results``
 (where to write the answers), ``env`` (the whole environment of every engine
 step: nothing is inherited) and ``steps``, each either a command
-(``name``, ``argv``, ``stdin``) or an ``edit`` of the volume (``delete`` a file,
+(``name``, ``argv``, ``stdin``, or ``tty``: answers sent on a pseudo-terminal) or an ``edit`` of the volume (``delete`` a file,
 or ``copy_file`` ``from`` an absolute path ``to`` a path under the volume).
 Server request lines go to stderr, which the test reads.
 """
@@ -7010,12 +7172,16 @@ from __future__ import annotations
 
 import fcntl
 import json
+import os
+import pty
+import select
 import shutil
 import socket
 import struct
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -7037,6 +7203,39 @@ def reachable(address: tuple[str, int]) -> bool:
     except OSError:
         return False
     return True
+
+
+def run_on_tty(
+    argv: list[str], answers: list[dict[str, str]], env: dict[str, str], timeout: float
+) -> tuple[int, str]:
+    """Run *argv* with a terminal for stdin and stdout, as the engine's enrolment
+    demands, and send each answer once its ``expect`` text has appeared."""
+    master, slave = pty.openpty()
+    proc = subprocess.Popen(  # noqa: S603 - the test's own argv
+        argv, stdin=slave, stdout=slave, stderr=slave, env=env, close_fds=True, start_new_session=True
+    )
+    os.close(slave)
+    output, seen, pending = b"", 0, list(answers)
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        ready, _, _ = select.select([master], [], [], 0.2)
+        if ready:
+            try:
+                chunk = os.read(master, 4096)
+            except OSError:  # EIO: the child closed its end
+                break
+            if not chunk:
+                break
+            output += chunk
+        if pending and pending[0]["expect"].encode() in output[seen:]:
+            os.write(master, (pending.pop(0)["send"] + "\n").encode())
+            seen = len(output)
+        elif not ready and proc.poll() is not None:
+            break
+    else:
+        proc.kill()
+    os.close(master)
+    return proc.wait(), output.decode("utf-8", "replace")
 
 
 def edit(root: Path, change: dict[str, Any]) -> None:
@@ -7061,6 +7260,10 @@ def main(spec_path: str) -> int:
     for step in spec["steps"]:
         if "edit" in step:
             edit(root, step["edit"])
+            continue
+        if "tty" in step:
+            code, out = run_on_tty(step["argv"], step["tty"], spec["env"], 900.0)
+            steps.append({"name": step["name"], "returncode": code, "stdout": out, "stderr": ""})
             continue
         done = subprocess.run(  # noqa: S603 - the test's own argv
             step["argv"], input=step.get("stdin", ""), capture_output=True, text=True,
@@ -7134,7 +7337,7 @@ def tiny_volume(tmp: Path) -> Path:
     realkeys.make_file_key(root)
     path = tmp / "bunker.toml"
     path.write_text(config_text(str(root)))
-    publish.publish(config.load(path), Index(engine_version="0.22.0"), generated="2026-10-07T12:00:00Z")
+    publish.publish(config.load(path), Index(engine_version="0.0.1"), generated="2026-10-07T12:00:00Z")
     return root
 
 
@@ -7323,14 +7526,14 @@ Run: `BUNKER_NETNS_TEST=1 BUNKER_NETNS_THROWAWAY=1 HAMMUNITION_CATALOG=/path/to/
         python -m pip install --upgrade "pip>=25.3"
         pip install -e ".[dev]"
         if command -v git >/dev/null 2>&1; then
-          git clone --depth 1 --branch v0.22.0 https://github.com/Renegade-Penguin/Hammunition "$RUNNER_TEMP/hammunition" \
+          git clone --depth 1 --branch v0.21.0 https://github.com/Renegade-Penguin/Hammunition "$RUNNER_TEMP/hammunition" \
             && echo "HAMMUNITION_CATALOG=$RUNNER_TEMP/hammunition/catalog" >> "$GITHUB_ENV" \
             || echo "no engine catalog: the offline integration test will skip"
         fi
       test-command: BUNKER_NETNS_TEST=1 pytest -W error::DeprecationWarning
 ```
 
-(The test additionally needs `CI=true`, which GitHub sets. Unmeasured: that `$GITHUB_ENV` carries into the `test-command` step of GYST's `python-ci` and that `RUNNER_TEMP` exists in its distro containers; either failure makes the four engine tests skip, which the log says.) Run `.venv/bin/python -m pytest tests/test_packaging.py -q` — Expected: PASS (`test_gyst_pins_agree` and the pin tests read the `uses:` lines, which are unchanged).
+(The clone names the tag the repository currently pins, so the catalog matches the installed engine; Task 11 moves it with the pin and a test holds them together. The test additionally needs `CI=true`, which GitHub sets. Unmeasured: that `$GITHUB_ENV` carries into the `test-command` step of GYST's `python-ci` and that `RUNNER_TEMP` exists in its distro containers; either failure makes the four engine tests skip, which the log says.) Run `.venv/bin/python -m pytest tests/test_packaging.py -q` — Expected: PASS (`test_gyst_pins_agree` and the pin tests read the `uses:` lines, which are unchanged).
 
 `CONTRIBUTING.md`: add a row to *What the checks hold*: "| `tests/test_offline_integration.py` | the whole chain with the internet gone: a signed Bunker served inside a network namespace where nothing else answers, the pinned engine installing a data unit from it, and a missing catalogue, a bad signature and an older serial each refused |"; and a section "The offline integration test" saying: it needs `unshare -r -n` (or passwordless `sudo`), the engine's catalog directory in `HAMMUNITION_CATALOG`, and the two environment variables; that it **writes engine state into a throwaway HOME and must never be run on a machine whose Hammunition station matters** (use the CI runner or a VM); and that the harness is local until GYST has a reusable "run with no network except named hosts" step.
 
@@ -7355,9 +7558,9 @@ engine; an offline data-unit install succeeds, and a missing catalogue, a bad
 signature and an older serial each refuse. Gated to throwaway environments."
 ```
 
-### Task 11: Pin the Plan A engine release
+### Task 11: Pin the engine release that contains Plan A
 
-Everything above was written against a local checkout of the Plan A branch. This task makes that the pinned engine: the tag moves in every place the repository names it (held together by tests), the floor rises to the release that has `hammunition.catalogue`, `hammunition.keystrength`, `hammunition.signers` and the mirror-first methods, the skips that waited for it become failures, and the docs stop saying a mirror cannot make an install work offline. **Needs the Plan A release to exist.** This plan assumes it is tagged `v0.22.0` (the contract's example `engine_version`); if it is another number, use that number everywhere `0.22.0` appears below. Cutting the Bunker release itself (`__version__`, the image tags, moving the changelog under a version) is the maintainer's step per CONTRIBUTING.md and is not done here.
+Everything above was written against a local checkout of the Plan A branch. This task makes the released engine the pinned one: its tag moves in every place the repository names it (held together by tests), the floor rises to the release that has `hammunition.catalogue`, `hammunition.keystrength`, `hammunition.signers` and `hammunition.gitbundles`, the skips that waited for it become failures, and the docs stop saying a mirror cannot make an install work offline. **Needs that release to exist.** Its tag is decided at release (Plan A ships in v0.22.0 only if nothing else claims that number), so the number is written once, as the shell variable `ENGINE` in Step 1, and every command below reads it; no test or code in this plan names it (`bunker.ENGINE_CONTRACT` is the one constant, and the tests read that). Cutting the Bunker release itself (`__version__`, the image tags, moving the changelog under a version) is the maintainer's step per CONTRIBUTING.md and is not done here.
 
 **Files:**
 - Modify: `src/bunker/__init__.py` (14-33), `src/bunker/enginelib.py` (`validate_catalogue`), `pyproject.toml` (23), `Dockerfile` (23, 26), `.github/workflows/live.yml` (31), `.github/workflows/ci.yml` (comment 8-9 and the Task 10 `--branch`), `README.md` (25, 80), `CONTRIBUTING.md` (94), `CLAUDE.md`, `docs/reference.md` (139, 257), `docs/guide.md` (26-32, 183-187), `CHANGELOG.md`, `tests/plan_a.py`, `tests/helpers.py` (10), `tests/conftest.py` (87), `tests/test_kinds.py` (113), `tests/test_doctor.py` (39, 45), `tests/test_engine.py` (103, 259-262), `tests/test_run.py` (the `engine_version` assertion Task 1 wrote), `tests/test_repo_hygiene.py` (75-91), `tests/golden/doctor.json`, `tests/golden/run.json`, `tests/golden/status.json`, `tests/golden/keys.json`
@@ -7365,21 +7568,23 @@ Everything above was written against a local checkout of the Plan A branch. This
 
 **Interfaces:**
 - Consumes: the Plan A release tag and its tag archive.
-- Produces: `bunker.ENGINE_CONTRACT = "0.22.0"`, `bunker.ENGINE_FLOOR = "0.22.0"`; `plan_a.REQUIRE_PLAN_A = True`; `enginelib.validate_catalogue` that raises instead of skipping when the module is missing.
+- Produces: `bunker.ENGINE_CONTRACT` and `bunker.ENGINE_FLOOR`, both that release; `plan_a.REQUIRE_PLAN_A = True`; `enginelib.validate_catalogue` that raises instead of skipping when the module is missing.
 
-- [ ] **Step 1: Measure the release (CONTRIBUTING.md, "Cutting a release", step 2)**
+- [ ] **Step 1: Name the release once, and measure it (CONTRIBUTING.md, "Cutting a release", step 2)**
 
 ```bash
+ENGINE=0.22.0   # the engine release that contains Plan A: the only place the number is written
+OLD="$(python3 -c 'import bunker; print(bunker.ENGINE_CONTRACT)')"   # 0.21.0 today
 tmp="$(mktemp -d)"
-curl -fLo "$tmp/engine.tar.gz" https://github.com/Renegade-Penguin/Hammunition/archive/refs/tags/v0.22.0.tar.gz
+curl -fLo "$tmp/engine.tar.gz" "https://github.com/Renegade-Penguin/Hammunition/archive/refs/tags/v${ENGINE}.tar.gz"
 sha256sum "$tmp/engine.tar.gz"
-curl -fLo "$tmp/engine2.tar.gz" https://github.com/Renegade-Penguin/Hammunition/archive/refs/tags/v0.22.0.tar.gz
+curl -fLo "$tmp/engine2.tar.gz" "https://github.com/Renegade-Penguin/Hammunition/archive/refs/tags/v${ENGINE}.tar.gz"
 sha256sum "$tmp/engine2.tar.gz"
 gzip -dc "$tmp/engine.tar.gz" | git get-tar-commit-id
-git ls-remote https://github.com/Renegade-Penguin/Hammunition 'refs/tags/v0.22.0^{}'
+git ls-remote https://github.com/Renegade-Penguin/Hammunition "refs/tags/v${ENGINE}^{}"
 ```
 
-Expected: the two digests are identical (measured twice), and the commit id in the archive equals the tag's commit from `ls-remote`. If either differs, stop: do not fill the digest. Keep `$tmp` for Step 4.
+Expected: the two digests are identical (measured twice), and the commit id in the archive equals the tag's commit from `ls-remote`. If either differs, stop: do not fill the digest. If the release is not tagged `v0.22.0`, change the one `ENGINE=` line. Keep `$ENGINE`, `$OLD` and `$tmp` for the steps below (one shell).
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -7397,17 +7602,19 @@ def test_every_place_that_names_the_engine_names_the_pinned_release() -> None:
 
 
 def test_the_floor_is_the_release_that_has_the_catalogue_modules() -> None:
-    assert bunker.ENGINE_FLOOR == "0.22.0"
+    assert bunker.ENGINE_FLOOR == bunker.ENGINE_CONTRACT
 
 
 def test_the_pinned_engine_has_everything_the_catalogue_needs() -> None:
     import importlib
 
-    from bunker.enginelib import Fetcher
-
-    for module in ("hammunition.catalogue", "hammunition.keystrength", "hammunition.signers"):
+    for module in (
+        "hammunition.catalogue",
+        "hammunition.keystrength",
+        "hammunition.signers",
+        "hammunition.gitbundles",
+    ):
         importlib.import_module(module)
-    assert hasattr(Fetcher, "fetch_etag") and hasattr(Fetcher, "fetch_sized")
 
 
 def test_the_plan_a_skips_are_failures_now() -> None:
@@ -7416,19 +7623,19 @@ def test_the_plan_a_skips_are_failures_now() -> None:
     assert plan_a.REQUIRE_PLAN_A is True
 ```
 
-Run: `.venv/bin/python -m pytest tests/test_repo_hygiene.py -q` — Expected: FAIL: `test_the_floor_is_the_release_that_has_the_catalogue_modules` (`'0.19.0' != '0.22.0'`) and `test_the_plan_a_skips_are_failures_now`.
+Run: `.venv/bin/python -m pytest tests/test_repo_hygiene.py -q` — Expected: FAIL: `test_the_floor_is_the_release_that_has_the_catalogue_modules` (`'0.19.0' != '0.21.0'`) and `test_the_plan_a_skips_are_failures_now`.
 
 - [ ] **Step 3: Move the pin**
 
-`src/bunker/__init__.py`: set `ENGINE_FLOOR = "0.22.0"` and `ENGINE_CONTRACT = "0.22.0"`, and rewrite the two comment blocks above them (14-33) to say: the floor is the oldest release with `hammunition.catalogue`, `hammunition.keystrength`, `hammunition.signers`, `Fetcher.fetch_etag` and `Fetcher.fetch_sized` (the Bunker cannot publish or classify a key without them), and the contract is the newest release whose `artifacts` document the check table was written against; keep the sentence that `ENGINE_CONTRACT` is the pin and `tests/test_repo_hygiene.py` holds the three together.
+`src/bunker/__init__.py`: set `ENGINE_FLOOR` and `ENGINE_CONTRACT` both to the `ENGINE` number, and rewrite the two comment blocks above them (14-33) to say: the floor is the oldest release with `hammunition.catalogue`, `hammunition.keystrength`, `hammunition.signers` and `hammunition.gitbundles` (the Bunker cannot publish, classify a key or name a bundle without them), and the contract is the newest release whose `artifacts` document the check table was written against; keep the sentence that `ENGINE_CONTRACT` is the pin and `tests/test_repo_hygiene.py` holds the three together.
 
 ```bash
-sed -i 's#Hammunition@v0.21.0#Hammunition@v0.22.0#' pyproject.toml
-sed -i 's#^ARG ENGINE_VERSION=0.21.0#ARG ENGINE_VERSION=0.22.0#' Dockerfile
-sed -i 's#ref: v0.21.0#ref: v0.22.0#' .github/workflows/live.yml
-sed -i 's#--branch v0.21.0 #--branch v0.22.0 #; s#(Hammunition v0.21.0)#(Hammunition v0.22.0)#' .github/workflows/ci.yml
-sed -i 's#Hammunition v0.21.0#Hammunition v0.22.0#' README.md
-sed -i 's#tags/v0.21.0.tar.gz#tags/v0.22.0.tar.gz#' CONTRIBUTING.md
+sed -i "s#Hammunition@v${OLD}#Hammunition@v${ENGINE}#" pyproject.toml
+sed -i "s#^ARG ENGINE_VERSION=${OLD}#ARG ENGINE_VERSION=${ENGINE}#" Dockerfile
+sed -i "s#ref: v${OLD}#ref: v${ENGINE}#" .github/workflows/live.yml
+sed -i "s#--branch v${OLD} #--branch v${ENGINE} #; s#(Hammunition v${OLD})#(Hammunition v${ENGINE})#" .github/workflows/ci.yml
+sed -i "s#Hammunition v${OLD}#Hammunition v${ENGINE}#" README.md
+sed -i "s#tags/v${OLD}.tar.gz#tags/v${ENGINE}.tar.gz#" CONTRIBUTING.md
 digest="$(sha256sum "$tmp/engine.tar.gz" | cut -d' ' -f1)"
 sed -i "s#^ARG ENGINE_SHA256=.*#ARG ENGINE_SHA256=${digest}#" Dockerfile
 git diff --stat
@@ -7436,7 +7643,7 @@ git diff --stat
 
 Expected: eight files changed; `git diff Dockerfile` shows `ENGINE_VERSION` and `ENGINE_SHA256` only (the digest equal to Step 1's). The `uses:` pin lines of the workflows are untouched (`git diff .github` shows the two `ref`/`--branch` lines and the comment).
 
-Update the `ci.yml` comment (lines 8-9) to say the pinned engine "has `hammunition.catalogue`, `keystrength` and `signers`, the mirror-first fetch methods and every check kind's engine method".
+Update the `ci.yml` comment (lines 8-9) to say the pinned engine "has `hammunition.catalogue`, `keystrength`, `signers` and `gitbundles`, `mirror enrol` and `install --offline`, and every check kind's engine method".
 
 - [ ] **Step 4: Make the waits strict**
 
@@ -7449,7 +7656,7 @@ def validate_catalogue(data: bytes) -> None:
     catalogue_module().parse(data)
 ```
 
-Constants that stand for "the engine's version" in tests: `tests/helpers.py` line 10 `ENGINE_VERSION = "0.22.0"`; `tests/conftest.py` line 87 default `"0.22.0"`; `tests/test_kinds.py` line 113 default `"0.22.0"`; `tests/test_doctor.py` line 39 `assert ENGINE_VERSION in ...` (import it from `tests.helpers`) and line 45 `assert not check.ok and ENGINE_FLOOR in check.detail` (import `ENGINE_FLOOR` from `bunker`); `tests/test_engine.py` line 103 `assert listing.engine_version == ENGINE_VERSION`, and the `test_meets_floor` parameters (259-262) become `[("0.22.0", True), ("0.22.1", True), ("1.0.0", True), ("0.21.9", False), ("0.19.0", False)]`; `tests/test_run.py`: the Task 1 assertion `raw["engine_version"] == "0.21.0"` becomes `== "0.22.0"`. Leave `tests/data/engine-v0.21.0-repeater-snapshots.json` and the tests that name v0.21.0 as a capture alone: they record what that release printed.
+Constants that stand for "the engine's version" in tests: `tests/helpers.py` line 10 `ENGINE_VERSION = "<ENGINE>"`, `tests/conftest.py` line 87 and `tests/test_kinds.py` line 113 defaults likewise (write them with `sed -i "s#\"${OLD}\"#\"${ENGINE}\"#"` on those three lines only); `tests/test_doctor.py` line 39 `assert ENGINE_VERSION in ...` (import it from `tests.helpers`) and line 45 `assert not check.ok and ENGINE_FLOOR in check.detail` (import `ENGINE_FLOOR` from `bunker`); `tests/test_engine.py` line 103 `assert listing.engine_version == ENGINE_VERSION`, and the `test_meets_floor` parameters (259-262) become `[(ENGINE_FLOOR, True), ("99.0.0", True), ("0.19.0", False), ("0.16.0", False)]`; `tests/test_run.py`: the Task 1 assertion on `raw["engine_version"]` compares to `ENGINE_VERSION`. Leave `tests/data/engine-v0.21.0-repeater-snapshots.json` and the tests that name v0.21.0 as a capture alone: they record what that release printed.
 
 Then regenerate the goldens on a fresh venv installed from the pinned tag (the environment the maintainer's CI will have):
 
@@ -7459,11 +7666,11 @@ BUNKER_UPDATE_GOLDENS=1 .venv/bin/python -m pytest tests/test_cli.py -q
 git diff tests/golden
 ```
 
-Expected diff: `doctor.json` (`Hammunition 0.22.0 answers (floor 0.22.0)`), `run.json`, `status.json` (`engine_version`) and `keys.json` (the same). Nothing else may change; read it.
+Expected diff: `doctor.json` (`Hammunition <ENGINE> answers (floor <ENGINE>)`), `run.json`, `status.json` (`engine_version`) and `keys.json` (the same). Nothing else may change; read it.
 
 - [ ] **Step 5: Docs**
 
-`docs/reference.md` line 139: the floor is now v0.22.0 (the first release with the catalogue modules and `fetch_etag`/`fetch_sized`) and the pin is v0.22.0; line 257: "the engine this Bunker pins (v0.22.0) emits it". `docs/guide.md` lines 26-32: the laptop needs Hammunition 0.22.0 or later for the signed catalogue and offline planning; the older sentences about 0.19.0 and 0.21.0 are replaced by one: older engines still take files from a mirror (D-070) but cannot read the catalogue or plan offline. Replace the paragraph at 183-187 ("**A mirror does not make an install work offline.** ...") with:
+`docs/reference.md` line 139: the floor is now the pinned release (the first with the catalogue modules and `hammunition.gitbundles`); line 257: "the engine this Bunker pins emits it". `docs/guide.md` lines 26-32: the laptop needs the pinned Hammunition release or later for the signed catalogue and offline planning; the older sentences about 0.19.0 and 0.21.0 are replaced by one: older engines still take files from a mirror (D-070) but cannot read the catalogue or plan offline. Replace the paragraph at 183-187 ("**A mirror does not make an install work offline.** ...") with:
 
 ```markdown
 **Offline planning.** `hammunition mirror enrol http://<nas-address>:8080/` fetches the catalogue and its
@@ -7480,7 +7687,7 @@ restored the Bunker from a backup). Hammunition's own
 describes the laptop side.
 ```
 
-`README.md` status block (line 25 area): the engine paragraph names Hammunition v0.22.0 and "every check kind the document can emit, the catalogue modules and the mirror-first fetch methods". `CLAUDE.md` invariants: change "**One verifier.** Every download goes through the engine's own `hammunition.fetch.Fetcher`" to also say "and every catalogue the Bunker writes must pass the engine's own `hammunition.catalogue.parse()` before it is published (`bunker.publish`)", and the Layout block to add `signing, keys, publish, enrol, inputs, gitbundle, export`. `CHANGELOG.md` under *Unreleased → Changed*: "- The engine pin is Hammunition v0.22.0 (was v0.21.0): `ENGINE_CONTRACT`, `ENGINE_FLOOR` (now v0.22.0: the Bunker needs `hammunition.catalogue`, `hammunition.keystrength`, `hammunition.signers`, `Fetcher.fetch_etag` and `Fetcher.fetch_sized`), `pyproject.toml`, the Dockerfile (tag and the tag archive's sha256, measured twice, commit equal to the tag's), the live workflow's ref and `ci.yml`'s catalog clone. `bunker doctor` reports an engine below the floor. The skips that waited for the release are failures."
+`README.md` status block (line 25 area): the engine paragraph names the pinned Hammunition release and "every check kind the document can emit, the catalogue modules and the git bundle names". `CLAUDE.md` invariants: change "**One verifier.** Every download goes through the engine's own `hammunition.fetch.Fetcher`" to also say "and every catalogue the Bunker writes must pass the engine's own `hammunition.catalogue.parse()` before it is published (`bunker.publish`)", and the Layout block to add `signing, keys, publish, enrol, inputs, gitbundle, export`. `CHANGELOG.md` under *Unreleased → Changed*, with the real numbers from `$OLD` and `$ENGINE`: "- The engine pin is Hammunition v<ENGINE> (was v<OLD>): `ENGINE_CONTRACT`, `ENGINE_FLOOR` (now the same release: the Bunker needs `hammunition.catalogue`, `hammunition.keystrength`, `hammunition.signers` and `hammunition.gitbundles`), `pyproject.toml`, the Dockerfile (tag and the tag archive's sha256, measured twice, commit equal to the tag's), the live workflow's ref and `ci.yml`'s catalog clone. `bunker doctor` reports an engine below the floor. The skips that waited for the release are failures."
 
 - [ ] **Step 6: Run everything on the pinned engine and commit**
 
@@ -7488,11 +7695,11 @@ describes the laptop side.
 make check; echo "exit=$?"
 ```
 
-Expected: `exit=0`, with no test skipped for a missing Plan A module: `.venv/bin/python -m pytest -q -rs 2>&1 | grep -i "plan a"` prints nothing (this `grep` reads the report; the gate is the `exit=` line above, not this). Also run the integration test where it can run (a throwaway VM or the CI runner): `BUNKER_NETNS_TEST=1 BUNKER_NETNS_THROWAWAY=1 HAMMUNITION_CATALOG=<catalog of v0.22.0> .venv/bin/python -m pytest tests/test_offline_integration.py -q` — Expected: five PASS. If an engine command line in `tests/netns.py::EngineDriver` is wrong, fix it there and re-run; that is the end of the Plan A assumptions.
+Expected: `exit=0`, with no test skipped for a missing Plan A module: `.venv/bin/python -m pytest -q -rs 2>&1 | grep -i "plan a"` prints nothing (this `grep` reads the report; the gate is the `exit=` line above, not this). Also run the integration test where it can run (a throwaway VM or the CI runner): `BUNKER_NETNS_TEST=1 BUNKER_NETNS_THROWAWAY=1 HAMMUNITION_CATALOG=<the catalog directory of that release> .venv/bin/python -m pytest tests/test_offline_integration.py -q` — Expected: five PASS. If an engine command line in `tests/netns.py::EngineDriver` is wrong, fix it there and re-run; that is the end of the Plan A assumptions.
 
 ```bash
 git add src/bunker/__init__.py src/bunker/enginelib.py pyproject.toml Dockerfile .github/workflows/live.yml .github/workflows/ci.yml README.md CONTRIBUTING.md CLAUDE.md docs/reference.md docs/guide.md CHANGELOG.md tests
-git commit -m "Pin Hammunition v0.22.0; the floor rises to the release with the catalogue modules
+git commit -m "Pin the Hammunition release that contains Plan A; the floor rises with it
 
 ENGINE_CONTRACT, ENGINE_FLOOR, the pyproject pin, the Dockerfile tag and tag
 archive digest, the live workflow ref and the CI catalog clone move together,
@@ -7517,7 +7724,7 @@ planning instead of saying a mirror cannot make an install work offline."
 | Scope: tests including one network-isolated integration test | every task's tests; 10 |
 | The catalogue: top-level fields (`serial`, `generated`, `bunker`, `signers`) | 1 |
 | The catalogue: per-entry `publisher_*`, `share` | 1 (fields), 4 (publisher facts), 6 (share) |
-| The catalogue: `inputs` | 1 (fields), 4 (fetch and record) |
+| The catalogue: `inputs` | 1 (fields), 4 (the engine's own record files, written byte for byte; the Bunker has no codec) |
 | The catalogue: served at `/catalogue.json` and `/index.json` for one release | 1 (alias), 6 (signatures, inputs) |
 | Freshness and rollback (serial never lowered; 30-day age) | 1 (serial high-water file), 2 (re-sign at 7 days so the 30-day warning never fires on a quiet Bunker); the reader's refusal is the engine's |
 | Signing (`ssh-keygen -Y sign`, one per key, namespace) | 2 |
@@ -7531,29 +7738,47 @@ planning instead of saying a mirror cannot make an install work offline."
 | The `security-keys` profile and `doctor` | the engine's; the Bunker's own `signing` check is 3 |
 | Bunker side summary: v3 writer and upgrade | 1 |
 | Bunker side summary: signing after every change, status page | 2, 7 |
-| Bunker side summary: new fetch kinds | 4, 5 |
+| Bunker side summary: new fetch kinds | 4 (inputs), 5 (multipart ETags, payloads, git bundles) |
 | Bunker side summary: `bunker export --to DIR` | 8 |
 | Bunker side summary: group-mode filtering | 6 |
 | Decision record D-085 | the engine's; the Bunker's changelog entries in every task, and 11 |
 | Tests: Bunker unit tests (v2 to v3, signing per backend with a fake seam, `share` filtering) | 1, 2, 6 |
 | Tests: one integration test | 10 |
 | CI and GYST (integration test local; generic part to GYST) | 10 (the harness stays local; the GYST issue is filed there) |
-| Phase 3 (the layout fixed now) | 8 |
+| Phase 3 (the layout fixed now) | 8 (Plan A Task 4 already reads it) |
+| Contract amendments of 2026-10-07 (`signers[].no_touch_required` display-only; selection inputs are the engine's record files) | 1, 2 (the field, never in an allowed-signers line), 4 |
 | Phase 2 (apt and pip) | out of scope here, as in the spec |
-| What is measured and not | each task's notes; 9 (guide), 10 (assumptions), Self-review below |
+| What is measured and not | each task's notes; 9 (guide), 10 (assumptions), Self-review and Needs from Plan A below |
 
 ## Self-review
 
-Written from the Bunker code at `origin/main` (dc668e7, engine pin v0.21.0), the spec and the contract; the plan itself has not been executed against the repository. Things measured in this session, in a scratch directory: `ssh-keygen -Y sign` (stdin, namespace `hammunition-bunker-catalogue`) and `-Y verify` with Ed25519, ECDSA P-384 and RSA 1024/2048/3072 keys on OpenSSH 10.3; a real `ssh-agent` signing through a `.pub` file with no private key beside it (and the fallback to the private key when one *is* beside it, which is why the agent test copies the `.pub` alone); the SHA256 fingerprint computed in pure Python equal to `ssh-keygen -l`; principal and namespace mismatches failing; `ssh-keygen` refusing RSA under 1024 bits; `unshare -r -n` working unprivileged with loopback the only interface and `ENETUNREACH` for any other address; the git clone, `update-ref`, `config --blob` and `bundle create` sequence on local repositories with submodules.
+Written from the Bunker code at `origin/main` (dc668e7, engine pin v0.21.0), the spec, the contract as amended (Hammunition commit 27ab4e34) and Plan A (`2026-10-07-offline-bunker-engine.md`, 19 tasks, read for names, signatures, wording and the rules its reader enforces); the plan itself has not been executed against the repository. Measured in a scratch directory: `ssh-keygen -Y sign` (stdin, namespace `hammunition-bunker-catalogue`) and `-Y verify` with Ed25519, ECDSA P-384 and RSA 1024/2048/3072 keys on OpenSSH 10.3; a real `ssh-agent` signing through a `.pub` file with no private key beside it (and the fallback to the private key when one *is* beside it, which is why the agent test copies the `.pub` alone); the SHA256 fingerprint computed in pure Python equal to `ssh-keygen -l`; principal and namespace mismatches failing; `ssh-keygen` refusing RSA under 1024 bits; `unshare -r -n` working unprivileged with loopback the only interface and `ENETUNREACH` for any other address (and the loopback-up ioctl the scenario uses); the git clone, `update-ref`, `config --blob` and `bundle create` sequence on local repositories with submodules.
 
-**Found in the contract, not changed:** the contract says the engine renders `no-touch-required` into the allowed-signers line for an `sk-*` key made that way. OpenSSH 10.3 rejects it: `allowed:1: bad options: unknown key option` (an allowed-signers file takes `cert-authority`, `namespaces`, `valid-after` and `valid-before` only), and `ssh-keygen -Y verify -O no-touch-required` is `Invalid option`. An engine that writes that option would fail every verification. The Bunker's own local verification writes no such option. Whether `-Y verify` enforces the user-presence flag of a touch-required sk signature was not measured (no token); the engine owner should decide what "hardware key" means for a verifier if it does not.
+**The contract finding, resolved:** the contract said the engine renders `no-touch-required` into the allowed-signers line. OpenSSH 10.3 rejects it (`allowed:1: bad options: unknown key option`; `-Y verify -O no-touch-required` is `Invalid option`), and the contract was amended: `signers[].no_touch_required` is display-only and never written. This plan writes the field from the key's `no_touch` flag (Tasks 1, 2) and its own local verification writes no touch option. Still unmeasured, and a bench item: whether `-Y verify` enforces the user-presence flag of a touch-required sk signature.
 
-**Not grounded in code or output I read:**
-- Plan A's `artifacts --json` additions (task A10): `publisher_name`, `publisher_size` and an `inputs` list of `{kind, region, name, url, content}` are this plan's guess from the contract's catalogue names (Task 4); the check names `etag`, `sized`, `git-commit`, the call shapes of `Fetcher.fetch_etag` and `Fetcher.fetch_sized`, and how git pins and their submodules are listed (Task 5). Step 3 of Task 5 and the existing `test_the_table_covers_every_kind_the_installed_engine_can_emit` settle the names the first time they run against the Plan A checkout.
-- `hammunition.catalogue.parse()`: that it takes `bytes`, accepts a null `engine_version` on an empty volume, and what it checks of a signer (id against fingerprint, bits against algorithm). `hammunition.keystrength.classify()`: how it refuses DSA (the Bunker wraps any exception) and whether `warning` is `None` or `""` when not weak.
-- The engine command lines in the integration test (`mirror enrol URL` reading the fingerprint on stdin, `install UNIT --offline --yes`), whether a `data` install needs a root-owned prefix, and the keywords of the three refusals (`catalogue`, `signature`, `accept-older`; the last is the spec's own).
-- The output formats of `fido2-token -L` and `opensc-tool --list-readers` (written from memory), whether `ssh-keygen -t ed25519-sk -O resident` fails in a way that justifies the `ecdsa-sk` retry (the plan retries on any failure and says so), and everything about a real token, a PIV card in the container, the Immurok, hidraw permissions on a Synology and touch timing on a scheduled refresh: nothing here touches hardware and the guide lists each as a bench item.
-- That `sudo -n unshare -n` works on a GitHub-hosted runner, that `$GITHUB_ENV` and `$RUNNER_TEMP` are usable from GYST's `python-ci` install step, and that `openssh-client` and `git` exist in the distro-matrix containers (the signing and git tests skip when they do not).
-- The Plan A tag is assumed `v0.22.0`.
-- The GYST issue for the generic "no network except named hosts" step is written out in Task 10 but not filed: I made no network calls and the account choice (`ghwho`, `ghsw`) is the maintainer's.
+**Grounded in Plan A (was guessed in the first draft):**
+- `hammunition.catalogue.parse(raw: bytes) -> Catalogue`, raising `CatalogueError(ValueError)` with the field named; the rules the writer must meet (signer `id`/`algorithm`/`bits` equal to `classify`, sk keys `hardware: true`, `publisher_name` and `publisher_size` set together and positive, input `path == inputs/<kind>/<name>`, one input per `(kind, region)`, no duplicate `(unit, name)`, `engine_version` nullable), and the OSM and Copernicus rows its resolvers read (`publisher_url` the dated URL, `publisher_size == size`, an MD5 digest, check `md5`/`md5-publisher` or `etag-md5`/`md5`). Tasks 1 and 4.
+- `keystrength.classify(line) -> KeyStrength(..., fingerprint)`, raising `ValueError` (DSA, mismatched blob, missing `ssh-keygen`); `warning` `None` unless weak. Task 3.
+- `artifacts --json` (Plan A Task 16): payloads are `sha256` entries with a null size and the licence "licence not recorded in this manifest"; sheets are `etag-md5` (US Topo, 3DEP) and `sha256`/`unverified-fetch` (FSTopo); **no new check kinds**; inputs are `{kind, region, name, url, sha256, size, content, deferred}` with the engine's own record text; git pins are a separate `git_pins` array `{unit, name, repo, ref, commit, submodules, deferred}`, and the Bunker enumerates the gitlinks. The first draft's `etag`/`sized` kinds, `publisher_*` artifact fields and fetched outlines are gone. Tasks 4 and 5.
+- Engine bundle naming `bundle_name(unit, commit, path=, subcommit=)`: the commit is the top one and the path the whole recursive path; the engine reads the pinned tag from the bundle, so tags are kept. Task 5.
+- `mirror enrol URL` asks "Type one or more fingerprints, comma-separated: " only at a terminal (no `--yes`), so the integration test answers it on a pseudo-terminal; `install NAME... --offline --yes`; refusal words: "older than accepted serial … hammunition mirror accept-older", "no enrolled signature verified". The token probes (`fido2-token -L` lines starting `/dev/hidraw<N>:`, `opensc-tool --list-readers` and `--reader N --name` matching PIV) are Plan A's doctor's. Tasks 3 and 10.
+
+**Still not grounded in code or output I read or ran:**
+- Anything about a real token, a PIV card in the container, the Immurok, hidraw permissions on a Synology and touch timing on a scheduled refresh; `ssh-keygen -t ed25519-sk -O resident` failure modes that justify the `ecdsa-sk` retry (the plan retries on any failure and says so). Nothing here touches hardware; the guide lists each as a bench item.
+- That `sudo -n unshare -n` works on a GitHub-hosted runner, that `$GITHUB_ENV` and `$RUNNER_TEMP` reach GYST's `python-ci` steps, and that `openssh-client` and `git` exist in the distro-matrix containers (the signing and git tests skip when they do not).
+- The Plan A release tag (`ENGINE` in Task 11; v0.22.0 only if nothing else claims it).
+- The GYST issue for a reusable no-network step is written out in Task 10 but not filed: I made no network calls and the account choice (`ghwho`, `ghsw`) is the maintainer's.
 - The code blocks are not pre-formatted to ruff's style (line length, `# fmt: skip` placement, `__all__` order under RUF022); run `make format` and `ruff check --fix` before `make check`.
+
+## Needs from Plan A
+
+Where Plan A leaves something undefined that Plan B needs, nothing is guessed above; each item names what the Bunker does meanwhile.
+
+1. **Multipart ETag sheets in `artifacts --json`.** Task 16 lists US Topo and 3DEP sheets "using the same unit/name/digest kind as backend" with "carried ETags and size", and Task 9's test row uses `publisher_check="etag-md5"` with `publisher_digest=quad.etag`, but Plan A never states the `check` string or the `digest` shape listed for a multipart ETag (`<md5>-<parts>`). The Bunker assumes `etag-md5` with the ETag as `digest` and checks it with `Fetcher.fetch_etag`; any other check name is refused by name (the existing unknown-kind rule) until the table learns it. Please state it in `docs/reference/bunker-catalogue.md`.
+2. **The missing-catalogue refusal.** Plan A words the older-serial and bad-signature refusals; for `install --offline` against a Bunker whose `catalogue.json` is gone it says only that the transport read fails. The integration test asserts the word "catalogue" and a non-zero exit.
+3. **`install UNIT --offline --yes` for a `data` unit.** Whether it needs a saved station, a root-owned data prefix, or writes anywhere but the operator's home; and where the unit lands, so the integration test can assert the file rather than only the exit code and the Bunker's request log.
+4. **The size of `artifacts --json` with inputs inline.** Every selection of every requested region is carried as `content` in one document (tens of thousands of terrain tiles for a large region); no bound is stated. The Bunker refuses an input over the engine's 32 MiB reader bound and relies on `[engine] timeout`; a stated bound, or a way to ask for inputs separately, would help.
+5. **`--units` and the new arrays.** Whether `--units` filters `inputs` and `git_pins`. The Bunker passes `--units` only when `selection.units` is set, and holds whatever `inputs` and `git_pins` the document carries.
+6. **Licences for git pins.** `GitPinEntry` has no licence field; the Bunker records the unit's licence line when an artifact of the same unit carries one, else "licence not recorded in this manifest".
+7. **Importing `hammunition.gitbundles` on its own.** The Bunker imports it lazily after `hammunition.backends` (the existing import-order rule of `enginelib`); Plan A notes the backend cycle for `fetch_bundle` but not whether the module imports cleanly in that order.
+8. **Whether `hammunition.catalogue.parse` accepts what an empty fresh Bunker publishes** (no artifacts, no inputs, `engine_version` null). The reader model reads as if it does; the first publish on a new volume is the case.
